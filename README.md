@@ -2,6 +2,8 @@
 
 Reads your Destiny 2 vault and tells you what to keep and what to dismantle.
 
+![A tour of the report's pages](docs/D2InventoryReport.gif)
+
 ## Setup
 
 1. Install the dependencies (Python 3.11 or newer):
