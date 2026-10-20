@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Launch D2 Inventory Report. Works from any directory; reports are written
+# relative to wherever you invoke it, not to the repo.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+PY="$REPO/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+exec "$PY" "$REPO/main.py" "$@"

@@ -1,0 +1,19 @@
+# Tool configuration only. Dependencies live in requirements.txt.
+
+[tool.pytest.ini_options]
+# Keep pytest's cache out of the repo, which is now also the package root.
+cache_dir = "~/.cache/pytest/d2_inventory_report"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ARG"]
+# Conditional expressions are written as if blocks, which read more plainly, so
+# SIM108 (prefer a one-line `x = a if c else b`) is off.
+ignore = ["SIM108"]

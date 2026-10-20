@@ -1,0 +1,351 @@
+/* The report's styles. Colours follow the Base16 Runner Shell palette;
+   element colours are game-accurate and not themed. */
+:root {
+    --bg: #0c0c08;
+    --card: #14140e;
+    --tile: #191911;
+    --line: #2a2a1e;
+    --line-hi: #4e4e3a;
+    --ink: #e6eba8;
+    --ink-hi: #f4f8d8;
+    --ink-mid: #c9cf98;
+    --muted: #9a9a78;
+    --faint: #8a8a6a;
+    --keep: #00ffee;
+    --keep-fill: #0f2e2b;
+    --keep-line: #1f5c58;
+    --keep-bar: #00b8ac;
+    --purge: #ffb800;
+    --purge-line: #5c4a12;
+    --purge-note: #ffc940;
+    --ok: #c0f030;
+    --bad: #ff1a1a;
+    --bad-ink: #ff8a80;
+    --info: #4499ff;
+    --dim-note: #ff6eb4;
+    /* The wishlists' colours, by the list's place: the fifth comes round to the first. */
+    --wl1: var(--keep);
+    --wl2: var(--ok);
+    --wl3: var(--purge);
+    --wl4: var(--info);
+    --head: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+    --body: 'Barlow', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--body); }
+a { color: var(--keep); }
+a:hover { color: #9ffff8; }
+button { font: inherit; color: inherit; }
+.num { font-family: var(--mono); font-weight: 500; }
+.keep { color: var(--keep); }
+.purge { color: var(--purge); }
+.foot { margin: 0; font-size: 14px; color: var(--muted); }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 48px) 72px; }
+
+/* Shell: brand, page nav, pages */
+/* The header stays at the top of the window as the page scrolls. */
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 32px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 10px 0; }
+.brand b { font: 700 22px var(--head); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-hi); }
+.brand span { font: 13px var(--mono); color: var(--muted); }
+nav { display: flex; flex-wrap: wrap; gap: 0 28px; font: 600 17px var(--head); letter-spacing: 0.06em; text-transform: uppercase; }
+nav a { color: var(--muted); text-decoration: none; padding: 10px 0 8px; border-bottom: 3px solid transparent; }
+nav a:hover { color: var(--ink-hi); }
+nav a[aria-current] { color: var(--ink-hi); border-bottom-color: var(--keep); }
+.page { display: flex; flex-direction: column; gap: 36px; padding-top: 36px; }
+.page[hidden], [hidden] { display: none !important; }
+.intro { display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+.intro p { margin: 0; font-size: 18px; color: var(--ink-mid); }
+h1 { margin: 0; font: 700 clamp(40px, 6vw, 60px)/1.02 var(--head); color: var(--ink-hi); }
+h2 { margin: 0; font: 700 26px/1.2 var(--head); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-hi); }
+h2 .num { font-weight: 400; font-size: 18px; letter-spacing: 0; color: var(--muted); }
+h2 .num.purge { color: var(--purge); }
+h3 { margin: 0; font: 700 22px/1.15 var(--head); color: var(--ink-hi); }
+.block { display: flex; flex-direction: column; gap: 16px; }
+.block > p { margin: 0; max-width: 900px; color: var(--ink-mid); }
+.block-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+.block-head > span { color: var(--ink-mid); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.pad { padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+.callout { margin: 0; padding: 12px 16px; border: 1px solid var(--keep-line); border-radius: 10px; color: var(--ink-mid); }
+.label { font: 600 13px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+/* Buttons: switches, DIM copy */
+.switch { display: flex; flex-wrap: wrap; gap: 8px; }
+.switch button { font-weight: 600; font-size: 15px; min-height: 44px; padding: 0 18px; border-radius: 22px; border: 1px solid var(--line-hi); background: transparent; color: var(--ink-mid); cursor: pointer; }
+.switch button .num { font-weight: 400; color: var(--muted); }
+.switch button[aria-pressed="true"] { border-color: var(--keep); background: var(--keep-fill); color: var(--ink-hi); }
+.dim, .lgg { min-height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--keep-line); background: transparent; color: var(--keep); font-size: 14px; font-weight: 600; cursor: pointer; }
+.dim:hover, .lgg:hover { background: var(--keep-fill); }
+/* A purge query's button, in the Purge badge's yellow. */
+.dim.purge { border-color: var(--purge-line); color: var(--purge); }
+.dim.purge:hover { background: color-mix(in srgb, var(--purge) 14%, var(--card)); }
+.lgg { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* Summary */
+.player span { font-weight: 600; color: var(--muted); }
+.summary h1 { font-size: clamp(48px, 7vw, 76px); line-height: 1; }
+.kicker { font: 600 26px var(--head) !important; letter-spacing: 0.06em; text-transform: uppercase; }
+.totals { display: flex; flex-wrap: wrap; gap: 4px 28px; font-size: 20px !important; margin-top: 6px !important; }
+.totals b { color: var(--ink-hi); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 20px; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.card-head a { font-weight: 600; text-decoration: none; padding: 10px 0; }
+.big { margin: 0; display: flex; align-items: baseline; gap: 12px; font-size: 18px; color: var(--ink-mid); }
+.big .num { font-size: 56px; line-height: 1; color: var(--ink-hi); }
+.big .num.purge { color: var(--purge); }
+.big .dim { margin-left: auto; }
+.sub { margin: 0; color: var(--ink-mid); }
+.facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: baseline; }
+.facts dt { font-size: 18px; text-align: right; }
+.facts dd { margin: 0; }
+.share { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.share i { display: block; height: 12px; }
+.reasons { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px; }
+.reasons li { display: flex; align-items: center; gap: 10px; }
+.reasons .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.reasons .num { color: var(--ink-hi); min-width: 2ch; text-align: right; }
+.r1 { background: #ffb800; } .r2 { background: #d08f00; } .r3 { background: #9c6c00; } .r4 { background: #7a6a30; } .r5 { background: #5a5a42; }
+.reach { display: grid; grid-template-columns: 90px 1fr 6em; align-items: center; gap: 14px; }
+.reach b { color: var(--ink-hi); }
+.meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.meter i { display: block; height: 8px; background: var(--keep); }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 10px 0; text-align: left; }
+thead th { padding: 6px 0; font-size: 14px; font-weight: 500; color: var(--muted); }
+tbody tr { border-top: 1px solid var(--line); }
+tbody th { font-weight: 600; color: var(--ink-hi); }
+.right { text-align: right; }
+/* Collapsible sections: a card whose summary line, led by a chevron, opens it;
+   one inside another drops its card and indents. */
+.fold { border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.fold summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 20px; min-height: 44px; cursor: pointer; list-style: none; }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary h2 { font-size: 22px; }
+.fold summary h3 { font-size: 19px; }
+.fold .chev { flex: none; transition: transform 0.15s; }
+.fold[open] > summary .chev { transform: rotate(90deg); }
+.fold .scroll { overflow-x: auto; border-top: 1px solid var(--line); }
+.fold .fold { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+.fold .fold summary { padding-left: 40px; }
+.fold summary h4 { margin: 0; display: inline-flex; align-items: center; gap: 10px; font: 700 19px/1.2 var(--head); color: var(--ink-hi); }
+/* Expand all: the double chevron leading a group (before a weapon section's
+   own chevron, or a class's armor set count), turned down while it is rolled
+   down. */
+.expand { display: inline-flex; padding: 4px; margin: -4px; border: 0; border-radius: 4px; background: none; cursor: pointer; }
+.expand:hover { background: var(--keep-fill); }
+.expand svg { transition: transform 0.15s; }
+.expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.type-icon { width: 32px; height: 32px; flex: none; border-radius: 3px; }
+/* Disclosure buttons: a weapon family's or armor set's name, which shows or
+   hides the rest of its card. */
+.toggle { display: inline-flex; align-items: center; gap: 12px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.toggle .chev { flex: none; transition: transform 0.15s; }
+.toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.sources .state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-mid); }
+.sources table { min-width: 560px; }
+.sources th, .sources td { padding: 12px 16px; }
+.sources thead th { padding: 10px 16px; }
+.sources td:nth-child(2) { color: var(--ink-mid); }
+.sources td:last-child { font: 14px var(--mono); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 8px; }
+.status::before { content: ""; width: 10px; height: 10px; border-radius: 5px; flex: none; background: var(--ok); }
+.status.bad { color: var(--bad-ink); }
+.status.bad::before { background: var(--bad); }
+
+/* Weapons: true duplicates, then Roll Quality: each family's copies against the wishlists */
+.review { flex-direction: row; flex-wrap: wrap; gap: 20px 40px; align-items: center; }
+.review > div { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; flex: 1 1 320px; }
+.lead { margin: 0; font: 700 28px var(--head); color: var(--ink-hi); }
+.review p { margin: 0; color: var(--ink-mid); }
+.wicon { position: relative; width: 48px; height: 48px; flex: none; border-radius: 4px; overflow: hidden; background: var(--line); }
+.wicon img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.switch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.switch + .switch { padding-left: 14px; border-left: 1px solid var(--line); }
+.fam { overflow: visible; }
+.fams { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 20px; }
+.fam-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; }
+.fam-head h5 { margin: 0; font: 700 26px/1.15 var(--head); color: var(--ink-hi); }
+.fam-head .lgg { margin-left: auto; }
+/* A closed family shows its copy count; an open one shows the copies. */
+.fam-head .copy-count { font: 14px var(--mono); color: var(--muted); }
+.fam-head:has(.toggle[aria-expanded="true"]) .copy-count { display: none; }
+/* A family's name with its ammo badge, its season and drop source under it;
+   then its element, frame and rounds per minute, stacked. */
+.fam-name { display: flex; flex-direction: column; gap: 4px; }
+.fam-name .origin { font: 400 13px/1.4 var(--body); }
+.fam-title { display: inline-flex; align-items: center; gap: 10px; }
+.ammo { width: auto; height: 18px; flex: none; }
+.fam-stats { display: flex; flex-direction: column; gap: 4px; }
+.element, .frame { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-mid); }
+.element img, .frame img { width: 20px; height: 20px; }
+.fam-body { padding: 4px 20px 16px; border-top: 1px solid var(--line); }
+.no-list { margin: 0; padding: 14px 0 4px; color: var(--muted); }
+/* A family's table for one view of the wishlists: the Wishlist row, then a
+   row per copy; a column per perk socket, as wide as its widest cell, set
+   apart by a line. */
+.roll { overflow-x: auto; }
+.rolls { width: auto; }
+.rolls th, .rolls td { padding: 10px 8px; vertical-align: middle; }
+.rolls thead th { padding: 8px; font: 600 13px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.rolls :is(th, td):nth-child(n+3) { border-left: 1px solid var(--line); }
+.rolls tbody th { font-weight: 400; }
+.rolls tr.wish { background: #0f2e2b33; }
+.rolls tr.wish th { font-weight: 600; }
+.rolls tr.wish td[colspan] { color: var(--muted); }
+.rolls .score { font: 500 20px var(--mono); color: var(--muted); }
+.rolls .score.keep { color: var(--keep); }
+/* A sortable column's header: the active sort is cyan, its arrow down for
+   descending and up for ascending. */
+.sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.sort:hover { color: var(--ink-hi); }
+.sort svg { flex: none; opacity: 0.4; transition: transform 0.15s; }
+.sort.on { color: var(--keep); }
+.sort.on svg { opacity: 1; }
+.sort.asc svg { transform: rotate(180deg); }
+.copy { display: flex; align-items: flex-start; gap: 10px; width: 250px; }
+.copy .wicon { width: 40px; height: 40px; }
+.copy-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; color: var(--ink-mid); }
+.copy-line { display: flex; align-items: center; gap: 8px; }
+.copy-n { font: 500 13px var(--mono); color: var(--muted); }
+.copy-id { padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 4px; background: transparent; font: 10px var(--mono); color: var(--info); white-space: nowrap; cursor: copy; }
+.copy-id:hover { color: var(--keep); }
+.copy .notes { color: var(--dim-note); overflow-wrap: anywhere; }
+.rpm { margin-top: -2px; font: 11px var(--mono); color: var(--muted); }
+.kill { display: inline-flex; align-items: center; gap: 6px; font: 13px var(--mono); color: var(--ink-mid); }
+.kill img { width: 16px; height: 16px; flex: none; opacity: 0.85; }
+.origin { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+.copy .trash { color: var(--purge); }
+/* A cell's perks: a 30px slot each; a blank keeps the place of a pick the
+   copy lacks. A column's cells share its width, so when its perks wrap, every
+   row wraps at the same slot and the slots still line up. */
+.perks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.blank { width: 30px; height: 30px; flex: none; }
+/* A perk's ring gives its state: filled for a Wishlist pick or a perk in a
+   roll the copy completes, dashed for one a roll only names, faint for the
+   rest; faded when copy #1 has it too. Its colours are its lists' (the
+   generated l<places> rules: border colours, and --tint for the fill). */
+.perk { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border-radius: 50%; border: 2px solid var(--line); cursor: default; }
+.perk img { width: 24px; height: 24px; border-radius: 50%; }
+.legend .perk { width: 22px; height: 22px; border-radius: 50%; border-width: 2px; border-color: var(--line); background: transparent; }
+.legend .perk:is(.hit, .named) { --tint: var(--ink-mid); border-color: var(--ink-mid); }
+.perk.pick, .perk.hit { background: color-mix(in srgb, var(--tint) 14%, var(--card)); }
+.perk.named { border-style: dashed; }
+.wl-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--tint); }
+.perk.same { opacity: 0.35; }
+.perk.gap { margin-left: 8px; }
+
+/* Armor tiles: set cards, exotics, pieces without a tuning socket */
+.legend { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 15px; color: var(--ink-mid); }
+.legend li { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line-hi); background: var(--card); }
+.legend i.purge { border: 0; background: var(--purge); }
+.legend i.keep { border: 0; background: var(--keep); }
+.cls { display: flex; flex-direction: column; gap: 24px; }
+/* A class's armor head: the count and its purge query side by side. */
+.cls-head { justify-content: flex-start; align-items: center; gap: 8px 16px; }
+.cls-head > span { display: inline-flex; align-items: center; gap: 14px; }
+.set > header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 18px 20px; }
+.set > header .dim { margin-left: auto; }
+.set-body { border-top: 1px solid var(--line); }
+.set-body .bonuses { padding: 18px 20px 0; }
+.grade { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; flex: none; border-radius: 8px; border: 2px solid var(--line-hi); font: 700 30px var(--head); color: var(--ink-hi); }
+.grade.top { border-color: var(--keep); }
+.set-name { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; }
+.set-name h3 { font-size: 28px; line-height: 1.1; }
+.set-name span { color: var(--ink-mid); }
+.kv { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+.picks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; color: var(--ink-hi); }
+.picks li { display: flex; align-items: center; gap: 6px; }
+.picks .num { color: var(--muted); }
+.picks img, .stats img { opacity: 0.85; }
+.bonuses { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 12px 20px; }
+.bonus { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.bonus-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.bonus-head img { width: 28px; height: 28px; flex: none; }
+.bonus-head b { font-weight: 600; color: var(--ink-hi); }
+.aegis { margin-left: auto; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line-hi); font: 12px var(--mono); color: var(--ink-mid); }
+.bonus p { margin: 0; font-size: 14px; color: var(--ink-mid); white-space: pre-line; }
+.bonus p.small { font-size: 13px; }
+.bonus p.muted { color: var(--muted); }
+.bonus p.aegis-note { color: var(--info); }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; padding: 18px 20px 20px; }
+.slots section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.slots h4 { margin: 0; display: flex; align-items: center; gap: 10px; font: 600 15px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.slots .wicon { width: 40px; height: 40px; }
+.tile { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--tile); min-width: 0; }
+/* A piece's gear tier: the pip column of Bungie's tier overlay (a 96px image
+   whose pips sit in a 10 by 61px strip near its left edge), at the right,
+   scaled to 80% to sit clear of a short tile's edges. */
+.tile:has(.tier) { padding-right: 30px; }
+.tile .tier { position: absolute; top: 50%; right: 10px; width: 10px; height: 61px; transform: translateY(-50%) scale(0.8); object-fit: none; object-position: -9px -30px; }
+.tile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tile .score { font: 500 22px var(--mono); color: var(--ink-hi); }
+.tile .stats { display: flex; flex-wrap: wrap; gap: 2px 10px; font: 13px var(--mono); }
+.tile .stats span { display: inline-flex; align-items: center; gap: 3px; }
+.tile .stats .tuned { padding: 0 3px; border: 1px solid var(--muted); border-radius: 4px; }
+.tile .stats .zero { color: var(--muted); }
+.tile .stats .zero img { opacity: 0.4; }
+.legend i.box { border-color: var(--muted); background: transparent; }
+.tile .tuning { font-size: 13px; color: var(--muted); }
+.tile .note { font-size: 13px; color: var(--purge-note); }
+.tile .name { font-weight: 600; color: var(--ink-hi); }
+.chip { padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--purge); color: var(--bg); text-align: right; }
+.chip.keep { background: var(--keep); color: var(--bg); }
+/* A rescued piece's builds: one Keep: badge per build, with its stat icons. */
+.keeps { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.keeps .chip { display: inline-flex; align-items: center; gap: 4px; }
+.keeps img { width: 14px; height: 14px; filter: brightness(0); }
+.tile.purge { border-color: var(--purge-line); background: var(--bg); }
+.tile.purge .score { color: var(--ink-mid); }
+.tile.purge .stats { color: var(--muted); }
+.tile.rescued { border-color: var(--keep); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.exotics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; }
+.exotics .card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.exo-head { display: flex; align-items: center; gap: 12px; }
+.exo-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exo-head span { font-size: 14px; color: var(--ink-mid); }
+
+/* Builds */
+.builds { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(270px, 100%), 1fr)); gap: 14px; }
+.build { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-color: var(--purge-line); }
+.build-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.build h3 { font-size: 20px; }
+.short-by { font-size: 13px; font-weight: 600; color: var(--purge); white-space: nowrap; }
+.stat-bar { display: grid; grid-template-columns: 64px 1fr 36px; align-items: center; gap: 10px; font-size: 14px; }
+.stat-bar > span:first-child { color: var(--ink-mid); }
+.stat-bar .num { text-align: right; }
+.stat-bar.short .num { color: var(--purge); }
+.track { position: relative; height: 8px; background: var(--line); border-radius: 4px; }
+.track i { display: block; height: 8px; border-radius: 4px; background: var(--keep-bar); }
+.stat-bar.short .track i { background: var(--purge); }
+.track::after { content: ""; position: absolute; top: -3px; left: 62.5%; width: 2px; height: 14px; background: var(--muted); }
+.rescues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 14px; }
+.rescue { padding: 18px 20px; gap: 12px; border-color: var(--keep-line); }
+.rescue ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.rescue li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.rescue li b { color: var(--ink-hi); }
+.rescue li span { color: var(--ink-mid); }
+
+/* Preferences */
+.folds { display: flex; flex-direction: column; gap: 16px; }
+.prefs { min-width: 640px; }
+.prefs th, .prefs td { padding: 8px 16px; }
+.prefs thead th { padding: 10px 16px; }
+.prefs .muted { color: var(--muted); }
+.pref-name { display: inline-flex; align-items: center; gap: 10px; }
+.prefs .wicon { width: 32px; height: 32px; border-radius: 3px; cursor: help; }
+.prefs .badges { display: inline-flex; gap: 4px; width: 104px; flex: none; }
+.stat-pick { display: inline-flex; align-items: center; gap: 6px; }
+.stat-pick img { opacity: 0.85; }
+
+/* Perk tooltip: one element, filled from the hidden tip-<plug hash> blocks */
+.tip { position: fixed; z-index: 10; max-width: 320px; padding: 10px 12px; border: 1px solid var(--line-hi); border-radius: 8px; background: #0c0c08f2; box-shadow: 0 6px 18px #000a; pointer-events: none; font-size: 14px; line-height: 1.45; }
+.tip b { display: block; margin-bottom: 4px; color: var(--ink-hi); }
+.tip p { margin: 0; color: var(--ink-mid); white-space: pre-line; }
+.tip p + b { margin-top: 10px; }
+.tip p.named { margin-top: 6px; color: var(--keep); }
+.text-icon { width: 16px; height: 16px; vertical-align: -3px; }

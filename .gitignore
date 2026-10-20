@@ -1,0 +1,53 @@
+# Local data (dot files)
+.env
+.bungie_tokens.json
+.dim_tokens.json
+.armor_stat_preferences.json
+.armor_exotic_preferences.json
+*.json.migrated
+.bungie_oauth_cert.pem
+.bungie_oauth_key.pem
+# Claude Code's local settings and the temp files it saves them through
+.claude/settings.local.json*
+# Claude Code's project notes, kept local
+/CLAUDE.md
+
+# Backups
+*.bak*
+*.tmp
+
+# Local database
+*.db
+*.db-journal
+
+# Cache (single directory)
+.cache/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Generated reports
+d2_report_*.html
+d2_report_*.md
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+pytest-cache-files-*/
