@@ -11,5 +11,6 @@ from extract.dim import extract as dim
 from extract.clarity import extract as clarity
 from extract.wishlists import extract as wishlists
 from extract.aegis import extract as aegis
+from extract.perk_popularity import extract as perk_popularity
 
-__all__ = ['add_wishlist', 'bungie', 'dim', 'clarity', 'wishlists', 'aegis']
+__all__ = ['add_wishlist', 'bungie', 'dim', 'clarity', 'wishlists', 'aegis', 'perk_popularity']

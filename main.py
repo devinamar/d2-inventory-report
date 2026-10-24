@@ -53,6 +53,7 @@ def main():
     extract.clarity(conn)
     extract.wishlists(conn)
     extract.aegis(conn)
+    extract.perk_popularity(conn)
 
     # Analyze: each step reads the stored inventory and saves its results.
     analyze.weapons(conn)
