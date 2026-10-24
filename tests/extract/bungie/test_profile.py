@@ -1,5 +1,7 @@
 # Tests for reading the profile response (extract/bungie/profile.py) into rows
 # for the component tables.
+import json
+
 from extract.bungie import profile
 from sources.bungie import api_mappings
 from tests import conftest as c
@@ -62,29 +64,39 @@ def test_copies_and_their_instance_data(conn):
     assert rows.instances == [('w1', None, 2010, 4, void), ('w2', 1, None, None, None)]
 
 
-def test_components_keep_only_what_the_definition_tables_know(conn):
-    # An unknown plugged plug is stored as empty and counted; an unknown
-    # switchable plug, an unknown stat and a socket the copy doesn't have are
-    # skipped.
+def test_components_are_kept_as_sent_trimmed_to_the_fields_read(conn):
+    # One row per copy the profile sends a component for. Hashes stay whether
+    # or not the definition tables have them, an empty socket is {}, and only
+    # the fields the app reads are kept.
     c.add_weapon_def(conn, 100)
     response = c.make_profile(
-        vault=[item(100, 'w1')],
+        vault=[item(100, 'w1'), item(100, 'w2')],
         sockets={'w1': [c.INTRINSIC_ADAPTIVE, 7777, None]},
         reusable={'w1': {1: [c.TRAIT_PERK_A, 8888], 5: [c.TRAIT_PERK_B]}},
         stats={'w1': {RPM: 140, 9999: 1}},
     )
+    data = response['itemComponents']
+    for socket in data['sockets']['data']['w1']['sockets']:
+        socket.update(isEnabled=True, isVisible=True)
+    for plug in data['reusablePlugs']['data']['w1']['plugs']['1']:
+        plug.update(canInsert=True, enabled=True)
     rows = profile.profile_rows(conn, response)
-    assert [r[:3] for r in rows.sockets] == [
-        ('w1', 0, c.INTRINSIC_ADAPTIVE),
-        ('w1', 1, None),
-        ('w1', 2, None),
+    assert [r[0] for r in rows.sockets] == ['w1']
+    assert json.loads(rows.sockets[0][1]) == [
+        {'plugHash': c.INTRINSIC_ADAPTIVE},
+        {'plugHash': 7777},
+        {},
     ]
-    assert rows.unknown_plugs == 1
-    assert [r[:4] for r in rows.reusable_plugs] == [('w1', 1, 0, c.TRAIT_PERK_A)]
-    assert rows.stats == [('w1', RPM, 140)]
+    assert json.loads(rows.reusable_plugs[0][1]) == {
+        '1': [{'plugItemHash': c.TRAIT_PERK_A}, {'plugItemHash': 8888}],
+        '5': [{'plugItemHash': c.TRAIT_PERK_B}],
+    }
+    assert json.loads(rows.stats[0][1]) == {str(RPM): 140, '9999': 1}
 
 
-def test_plug_objectives_keep_only_known_plugs_and_objectives(conn):
+def test_plug_objectives_keep_each_plugs_objectives_as_sent(conn):
+    # Keyed by plug, each objective's hash and progress; completionValue,
+    # complete and visible are left out.
     c.add_weapon_def(conn, 100)
     response = c.make_profile(
         vault=[item(100, 'w1')],
@@ -96,5 +108,11 @@ def test_plug_objectives_keep_only_known_plugs_and_objectives(conn):
         },
     )
     rows = profile.profile_rows(conn, response)
-    # (itemInstanceId, plugHash, objectiveHash, progress, completionValue, complete, visible)
-    assert rows.plug_objectives == [('w1', c.KILL_TRACKER, c.ENEMIES_DEFEATED, 46, 1, 1, 1)]
+    assert [r[0] for r in rows.plug_objectives] == ['w1']
+    assert json.loads(rows.plug_objectives[0][1]) == {
+        str(c.KILL_TRACKER): [
+            {'objectiveHash': c.ENEMIES_DEFEATED, 'progress': 46},
+            {'objectiveHash': 9999, 'progress': 1},
+        ],
+        '8888': [{'objectiveHash': c.ENEMIES_DEFEATED, 'progress': 3}],
+    }

@@ -1,9 +1,11 @@
 # Reads the Bungie profile response: every weapon and armor copy, with the
-# instance components the item tables store as they come (300 instances, 304
-# stats, 305 sockets, 309 plug objectives, 310 reusable plugs). Every weapon
-# and armor copy is kept, whatever its tier; the analysis decides which ones
-# to compare.
+# instance components the item tables store (300 instances, 304 stats, 305
+# sockets, 309 plug objectives, 310 reusable plugs). Every weapon and armor
+# copy is kept, whatever its tier; the analysis decides which ones to compare.
+# A component is stored one row per copy, nested as the profile sends it and
+# trimmed to the fields the app reads.
 import dataclasses
+import json
 
 
 def collect_profile_items(profile: dict) -> tuple:
@@ -30,14 +32,20 @@ def collect_profile_items(profile: dict) -> tuple:
 
 @dataclasses.dataclass
 class ProfileRows:
-    # Rows for the component tables, in their column order.
+    # Rows for the component tables, in their column order: a copy's instance
+    # values, and each other component as (copy, its JSON).
     items: list  # DestinyItemComponent
     instances: list  # DestinyItemInstanceComponent
     stats: list  # DestinyItemStatsComponent
     sockets: list  # DestinyItemSocketsComponent
     reusable_plugs: list  # DestinyItemReusablePlugsComponent
     plug_objectives: list  # DestinyItemPlugObjectivesComponent
-    unknown_plugs: int = 0  # socket plugs that aren't stored plugs, stored as NULL
+
+
+# The fields of each component entry the app reads, kept in the JSON.
+SOCKET_FIELDS = ('plugHash',)
+PLUG_FIELDS = ('plugItemHash',)
+OBJECTIVE_FIELDS = ('objectiveHash', 'progress')
 
 
 def flag(value):
@@ -47,10 +55,16 @@ def flag(value):
     return int(value)
 
 
+def keep(entry, fields) -> dict:
+    # entry with only fields, the ones it has.
+    return {k: entry[k] for k in fields if k in entry}
+
+
 def profile_rows(conn, profile: dict) -> ProfileRows:
-    # The rows of every weapon and armor copy. Plugs, stats and objectives the
-    # definition tables don't have are left out: a plugged plug is stored as
-    # NULL, the rest are skipped.
+    # The rows of every weapon and armor copy. A component's hashes are kept
+    # as sent, whether or not the definition tables have them; a copy the
+    # profile sends a component for gets its row, the others none. An
+    # instance's damage type the definitions don't have is NULL.
     all_items, components = collect_profile_items(profile)
     gear_hashes = {
         r[0]
@@ -58,16 +72,7 @@ def profile_rows(conn, profile: dict) -> ProfileRows:
             "SELECT hash FROM DestinyInventoryItemDefinition WHERE itemType IN (2, 3)"
         )
     }
-    plug_hashes = {
-        r[0]
-        for r in conn.execute(
-            "SELECT hash FROM DestinyInventoryItemDefinition "
-            "WHERE plugCategoryIdentifier IS NOT NULL"
-        )
-    }
-    stat_hashes = {r[0] for r in conn.execute("SELECT hash FROM DestinyStatDefinition")}
     damage_hashes = {r[0] for r in conn.execute("SELECT hash FROM DestinyDamageTypeDefinition")}
-    objective_hashes = {r[0] for r in conn.execute("SELECT hash FROM DestinyObjectiveDefinition")}
 
     rows = ProfileRows([], [], [], [], [], [])
     for item in all_items:
@@ -91,59 +96,29 @@ def profile_rows(conn, profile: dict) -> ProfileRows:
                 )
             )
 
-        stats = components['stats'].get(instance_id, {}).get('stats', {})
-        for stat in stats.values():
-            if stat['statHash'] in stat_hashes:
-                rows.stats.append((instance_id, stat['statHash'], stat.get('value')))
+        stats = components['stats'].get(instance_id)
+        if stats is not None:
+            values = {h: s['value'] for h, s in (stats.get('stats') or {}).items() if 'value' in s}
+            rows.stats.append((instance_id, json.dumps(values)))
 
-        sockets = components['sockets'].get(instance_id, {}).get('sockets', [])
-        for idx, socket in enumerate(sockets):
-            plug_hash = socket.get('plugHash')
-            if plug_hash and plug_hash not in plug_hashes:
-                rows.unknown_plugs += 1
-                plug_hash = None
-            rows.sockets.append(
-                (
-                    instance_id,
-                    idx,
-                    plug_hash or None,
-                    flag(socket.get('isEnabled')),
-                    flag(socket.get('isVisible')),
-                )
-            )
+        sockets = components['sockets'].get(instance_id)
+        if sockets is not None:
+            entries = [keep(s, SOCKET_FIELDS) for s in sockets.get('sockets') or []]
+            rows.sockets.append((instance_id, json.dumps(entries)))
 
-        reusable = components['reusable_plugs'].get(instance_id, {}).get('plugs', {})
-        for idx, plugs in reusable.items():
-            if int(idx) >= len(sockets):
-                continue
-            for position, plug in enumerate(plugs):
-                if plug['plugItemHash'] in plug_hashes:
-                    rows.reusable_plugs.append(
-                        (
-                            instance_id,
-                            int(idx),
-                            position,
-                            plug['plugItemHash'],
-                            flag(plug.get('canInsert')),
-                            flag(plug.get('enabled')),
-                        )
-                    )
+        reusable = components['reusable_plugs'].get(instance_id)
+        if reusable is not None:
+            plugs = {
+                idx: [keep(p, PLUG_FIELDS) for p in entries]
+                for idx, entries in (reusable.get('plugs') or {}).items()
+            }
+            rows.reusable_plugs.append((instance_id, json.dumps(plugs)))
 
-        per_plug = components['plug_objectives'].get(instance_id, {}).get('objectivesPerPlug', {})
-        for plug_hash, objectives in per_plug.items():
-            if int(plug_hash) not in plug_hashes:
-                continue
-            for o in objectives:
-                if o['objectiveHash'] in objective_hashes:
-                    rows.plug_objectives.append(
-                        (
-                            instance_id,
-                            int(plug_hash),
-                            o['objectiveHash'],
-                            o.get('progress'),
-                            o.get('completionValue'),
-                            flag(o.get('complete')),
-                            flag(o.get('visible')),
-                        )
-                    )
+        per_plug = components['plug_objectives'].get(instance_id)
+        if per_plug is not None:
+            objectives = {
+                plug: [keep(o, OBJECTIVE_FIELDS) for o in entries]
+                for plug, entries in (per_plug.get('objectivesPerPlug') or {}).items()
+            }
+            rows.plug_objectives.append((instance_id, json.dumps(objectives)))
     return rows

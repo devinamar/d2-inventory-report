@@ -66,7 +66,7 @@ SELECT i.itemInstanceId AS instance_id, i.itemHash AS item_hash,
             ELSE 'https://www.bungie.net' || COALESCE(dt.icon, wdt.icon) END AS element_icon,
        COALESCE(NULLIF(cp.name, ''), NULLIF(ip.name, ''), 'Unknown') AS archetype,
        COALESCE(NULLIF(cp.icon, ''), ip.icon, '') AS archetype_icon,
-       COALESCE(st.value, 0) AS rpm,
+       COALESCE(st.stats ->> ('$."' || sk.statHash || '"'), 0) AS rpm,
        COALESCE(n.value, 0) AS power, n.gearTier AS gear_tier, i.state & 1 AS is_locked,
        (i.state & 4) > 0 AS is_masterworked, COALESCE(n.isEquipped, 0) AS is_equipped,
        COALESCE(gt.url, '') AS tier_overlay,
@@ -82,13 +82,11 @@ LEFT JOIN DestinyCollectibleDefinition c ON c.hash = d.collectibleHash
 LEFT JOIN by_trait bt ON bt.hash = d.hash AND bt.n = 1
 LEFT JOIN DestinyDamageTypeDefinition dt ON dt.hash = n.damageTypeHash
 LEFT JOIN DestinyDamageTypeDefinition wdt ON wdt.hash = d.defaultDamageTypeHash
-LEFT JOIN DestinyItemSocketsComponent s0
-    ON s0.itemInstanceId = i.itemInstanceId AND s0.socketIndex = 0
-LEFT JOIN v_plug cp ON cp.hash = s0.plugHash
+LEFT JOIN DestinyItemSocketsComponent s ON s.itemInstanceId = i.itemInstanceId
+LEFT JOIN v_plug cp ON cp.hash = s.sockets ->> '$[0].plugHash'
 LEFT JOIN v_plug ip ON ip.hash = d.socketEntries ->> '$[0].singleInitialItemHash'
 LEFT JOIN stat_key sk ON sk.key = 'rpm'
-LEFT JOIN DestinyItemStatsComponent st
-    ON st.itemInstanceId = i.itemInstanceId AND st.statHash = sk.statHash
+LEFT JOIN DestinyItemStatsComponent st ON st.itemInstanceId = i.itemInstanceId
 LEFT JOIN type_icon ti ON ti.name = CASE d.itemTypeDisplayName
     WHEN 'Combat Bow' THEN 'Bows' ELSE d.itemTypeDisplayName || 's' END
 LEFT JOIN v_gear_tier gt ON gt.tier = n.gearTier

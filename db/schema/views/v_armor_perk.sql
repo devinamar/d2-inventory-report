@@ -5,5 +5,6 @@ SELECT s.itemInstanceId AS instance_id, p.name AS perk
 FROM DestinyItemSocketsComponent s
 JOIN DestinyItemComponent i ON i.itemInstanceId = s.itemInstanceId
 JOIN DestinyInventoryItemDefinition d ON d.hash = i.itemHash AND d.itemType = 2
-JOIN DestinyInventoryItemDefinition p ON p.hash = s.plugHash
+CROSS JOIN json_each(s.sockets) so
+CROSS JOIN DestinyInventoryItemDefinition p ON p.hash = so.value ->> 'plugHash'
 WHERE p.plugCategoryIdentifier = 'intrinsics' AND p.name != '';

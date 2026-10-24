@@ -5,8 +5,10 @@
 CREATE VIEW v_armor_tuning AS
 SELECT DISTINCT r.itemInstanceId AS instance_id, k.key AS stat
 FROM DestinyItemReusablePlugsComponent r
-JOIN DestinyInventoryItemDefinition p ON p.hash = r.plugItemHash
-JOIN json_each(p.investmentStats) inv
-JOIN stat_key k ON k.statHash = inv.value ->> 'statTypeHash'
+CROSS JOIN json_each(r.plugs) sk
+CROSS JOIN json_each(sk.value) rp
+CROSS JOIN DestinyInventoryItemDefinition p ON p.hash = rp.value ->> 'plugItemHash'
+CROSS JOIN json_each(p.investmentStats) inv
+CROSS JOIN stat_key k ON k.statHash = inv.value ->> 'statTypeHash'
 WHERE p.plugCategoryIdentifier = 'core.gear_systems.armor_tiering.plugs.tuning.mods'
   AND inv.value ->> 'value' >= 5;

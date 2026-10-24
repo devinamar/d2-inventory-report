@@ -55,9 +55,10 @@ set_bonus AS (
 base AS (
     SELECT s.itemInstanceId, k.key, SUM(inv.value ->> 'value') AS value
     FROM DestinyItemSocketsComponent s
-    JOIN DestinyInventoryItemDefinition p ON p.hash = s.plugHash
-    JOIN json_each(p.investmentStats) inv
-    JOIN stat_key k ON k.statHash = inv.value ->> 'statTypeHash'
+    CROSS JOIN json_each(s.sockets) so
+    CROSS JOIN DestinyInventoryItemDefinition p ON p.hash = so.value ->> 'plugHash'
+    CROSS JOIN json_each(p.investmentStats) inv
+    CROSS JOIN stat_key k ON k.statHash = inv.value ->> 'statTypeHash'
     WHERE p.plugCategoryIdentifier IN ('intrinsics', 'armor_stats')
     GROUP BY s.itemInstanceId, k.key
 ),

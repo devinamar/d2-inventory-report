@@ -462,11 +462,28 @@ def add_copy(
     gear_tier=None,
 ):
     # A copy: its DestinyItemComponent row, its instance data when it has a
-    # damage_type (an enum value) or a gear_tier, the plug in each socket (sockets, None for
-    # an empty one), the plugs a socket can switch to (reusable, {socket
-    # index: [plug hashes]}), its stats ({stat hash: value}) and its plugs'
-    # objective progress (objectives, {plug hash: [(objective hash,
-    # progress)]}).
+    # damage_type (an enum value) or a gear_tier, and a row of JSON for each
+    # component given: the plug in each socket (sockets, None for an empty
+    # one), the plugs a socket can switch to (reusable, {socket index: [plug
+    # hashes]}), its stats ({stat hash: value}) and its plugs' objective
+    # progress (objectives, {plug hash: [(objective hash, progress)]}).
+    components = []
+    if sockets:
+        value = [{'plugHash': plug} if plug else {} for plug in sockets]
+        components.append(('DestinyItemSocketsComponent', value))
+    if reusable:
+        value = {
+            str(idx): [{'plugItemHash': plug} for plug in plugs] for idx, plugs in reusable.items()
+        }
+        components.append(('DestinyItemReusablePlugsComponent', value))
+    if stats:
+        components.append(('DestinyItemStatsComponent', {str(h): v for h, v in stats.items()}))
+    if objectives:
+        value = {
+            str(plug): [{'objectiveHash': o, 'progress': p} for o, p in entries]
+            for plug, entries in objectives.items()
+        }
+        components.append(('DestinyItemPlugObjectivesComponent', value))
     with conn:
         conn.execute(
             "INSERT INTO DestinyItemComponent (itemInstanceId, itemHash, state) VALUES (?, ?, ?)",
@@ -481,33 +498,8 @@ def add_copy(
                 "(itemInstanceId, damageTypeHash, gearTier) VALUES (?, ?, ?)",
                 (instance_id, damage_hash, gear_tier),
             )
-        conn.executemany(
-            "INSERT INTO DestinyItemSocketsComponent (itemInstanceId, socketIndex, plugHash) "
-            "VALUES (?, ?, ?)",
-            [(instance_id, idx, plug) for idx, plug in enumerate(sockets)],
-        )
-        conn.executemany(
-            "INSERT INTO DestinyItemReusablePlugsComponent "
-            "(itemInstanceId, socketIndex, position, plugItemHash) VALUES (?, ?, ?, ?)",
-            [
-                (instance_id, idx, position, plug)
-                for idx, plugs in (reusable or {}).items()
-                for position, plug in enumerate(plugs)
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO DestinyItemStatsComponent VALUES (?, ?, ?)",
-            [(instance_id, h, v) for h, v in (stats or {}).items()],
-        )
-        conn.executemany(
-            "INSERT INTO DestinyItemPlugObjectivesComponent "
-            "(itemInstanceId, plugHash, objectiveHash, progress) VALUES (?, ?, ?, ?)",
-            [
-                (instance_id, plug, objective, progress)
-                for plug, entries in (objectives or {}).items()
-                for objective, progress in entries
-            ],
-        )
+        for table, value in components:
+            conn.execute(f"INSERT INTO {table} VALUES (?, ?)", (instance_id, json.dumps(value)))
 
 
 def add_armor(

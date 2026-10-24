@@ -33,12 +33,6 @@ def extract(conn, session: Session, args) -> None:
 
     print("Fetching inventory...")
     rows = profile.profile_rows(conn, response)
-    print(
-        f"  Weapon and armor copies: {len(rows.items):,} ({len(rows.sockets):,} sockets, "
-        f"{len(rows.reusable_plugs):,} switchable plugs, {len(rows.stats):,} stats)"
-    )
-    if rows.unknown_plugs:
-        print(f"  {rows.unknown_plugs} plugged plugs aren't in the manifest; stored as empty")
     if not rows.reusable_plugs:
         print("\n  WARNING: No reusablePlugs data returned!")
         print("  OAuth may not be working correctly.")
@@ -48,6 +42,17 @@ def extract(conn, session: Session, args) -> None:
         sys.exit(1)
 
     inventory.save_snapshot(conn, rows)
+    sockets, plugs, stats = conn.execute(
+        "SELECT (SELECT COALESCE(SUM(json_array_length(sockets)), 0) "
+        "        FROM DestinyItemSocketsComponent), "
+        "       (SELECT COUNT(*) FROM DestinyItemReusablePlugsComponent r "
+        "        CROSS JOIN json_each(r.plugs) s CROSS JOIN json_each(s.value)), "
+        "       (SELECT COUNT(*) FROM DestinyItemStatsComponent t CROSS JOIN json_each(t.stats))"
+    ).fetchone()
+    print(
+        f"  Weapon and armor copies: {len(rows.items):,} ({sockets:,} sockets, "
+        f"{plugs:,} switchable plugs, {stats:,} stats)"
+    )
     weapons = conn.execute("SELECT COUNT(*), COUNT(DISTINCT item_hash) FROM v_weapon").fetchone()
     armor = conn.execute(
         "SELECT COUNT(*), COUNT(DISTINCT i.itemHash) FROM DestinyItemComponent i "

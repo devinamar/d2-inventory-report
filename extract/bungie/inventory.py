@@ -57,10 +57,11 @@ def trace_weapon(conn, name: str) -> None:
         ):
             perks_by_socket.setdefault(r['socket_idx'], []).append(r['perk'])
         for s in conn.execute(
-            "SELECT s.socketIndex, p.name, p.plugCategoryIdentifier, p.kind "
+            "SELECT so.key AS socketIndex, p.name, p.plugCategoryIdentifier, p.kind "
             "FROM DestinyItemSocketsComponent s "
-            "LEFT JOIN v_plug p ON p.hash = s.plugHash "
-            "WHERE s.itemInstanceId = ? ORDER BY s.socketIndex",
+            "CROSS JOIN json_each(s.sockets) so "
+            "LEFT JOIN v_plug p ON p.hash = so.value ->> 'plugHash' "
+            "WHERE s.itemInstanceId = ? ORDER BY so.key",
             (c['itemInstanceId'],),
         ):
             line = (
