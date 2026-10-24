@@ -17,10 +17,10 @@ def test_each_set_shows_with_its_badge_and_the_wishlists_are_listed(conn, tmp_pa
             (set_hash,),
         )
         conn.execute("INSERT INTO DestinySandboxPerkDefinition VALUES (1, 'Two Up', 'Helps.', '')")
-        conn.execute("INSERT INTO DestinyItemSetPerkDefinition VALUES (?, 0, 2, 1)", (set_hash,))
         conn.execute(
             "INSERT INTO wishlist_preference VALUES ('mine', 'Mine', 'https://example.com/w/mine.txt')"
         )
+    c.add_set_perks(conn, set_hash, [(2, 1)])
     html, _ = c.write_report(conn, tmp_path)
     page = c.report_page(html, 'preferences')
     assert 'Test Set</span></th>' in page and '<details class="fold">' in page

@@ -1,6 +1,8 @@
 # Tests for v_armor (db/schema/views/v_armor.sql): every armor copy with its
 # base stats, set and bonuses, class, slot and exotic perk, read from rows
 # written the way the ingest and the profile extract write them.
+import json
+
 import pytest
 
 from sources.bungie import api_mappings
@@ -35,12 +37,17 @@ def test_an_intrinsic_plugs_stats_count_too(conn):
     # and +25 melee.
     with conn:
         conn.execute(
-            "INSERT INTO DestinyInventoryItemDefinition (hash, name, plugCategoryIdentifier) "
-            "VALUES (9201, 'Spirit of Inmost Light', 'intrinsics')"
-        )
-        conn.executemany(
-            "INSERT INTO DestinyItemInvestmentStatDefinition VALUES (9201, ?, ?, ?)",
-            [(0, STAT_HASHES['super_stat'], 30), (1, STAT_HASHES['melee'], 25)],
+            "INSERT INTO DestinyInventoryItemDefinition "
+            "(hash, name, plugCategoryIdentifier, investmentStats) "
+            "VALUES (9201, 'Spirit of Inmost Light', 'intrinsics', ?)",
+            (
+                json.dumps(
+                    [
+                        {'statTypeHash': STAT_HASHES['super_stat'], 'value': 30},
+                        {'statTypeHash': STAT_HASHES['melee'], 'value': 25},
+                    ]
+                ),
+            ),
         )
     c.add_armor_def(
         conn, 300, name='Solipsism', set_name='', tier=6, slot='Class Armor', armor_class='Warlock'
@@ -87,10 +94,7 @@ def test_set_bonuses_class_and_slot(conn):
                 (702, 'Shock and Clear', 'Kills\n\njolt.'),
             ],
         )
-        conn.executemany(
-            "INSERT INTO DestinyItemSetPerkDefinition VALUES (77, ?, ?, ?)",
-            [(0, 2, 701), (1, 4, 702)],
-        )
+    c.add_set_perks(conn, 77, [(2, 701), (4, 702)])
     c.add_copy(conn, 'set', 200)
     c.add_copy(conn, 'none', 201)
     in_set, none = armor(conn, 'set'), armor(conn, 'none')

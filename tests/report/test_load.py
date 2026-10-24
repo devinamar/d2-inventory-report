@@ -37,26 +37,14 @@ def add_rifle(conn):
     # that order, and Subsistence no longer. Its intrinsic socket rolls too, but
     # no copy can switch it.
     c.add_weapon_def(conn, 100, sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
-    with conn:
-        conn.executemany("INSERT INTO DestinyPlugSetDefinition VALUES (?)", [(900,), (901,)])
-        conn.executemany(
-            "INSERT INTO DestinyItemSocketEntryPlugItemRandomizedDefinition VALUES (?, ?, ?, ?)",
-            [
-                (900, 0, c.TRAIT_PERK_B, 1),
-                (900, 1, c.TRAIT_PERK_A, 1),
-                (900, 2, c.TRAIT_PERK_C, 1),
-                (900, 3, c.TRAIT_PERK_D, 0),
-                (901, 0, c.INTRINSIC_ADAPTIVE, 1),
-            ],
-        )
-        conn.execute(
-            "UPDATE DestinyItemSocketEntryDefinition SET randomizedPlugSetHash = 900 "
-            "WHERE itemHash = 100 AND socketIndex = 1"
-        )
-        conn.execute(
-            "UPDATE DestinyItemSocketEntryDefinition SET reusablePlugSetHash = 901 "
-            "WHERE itemHash = 100 AND socketIndex = 0"
-        )
+    c.add_plug_set(
+        conn,
+        100,
+        1,
+        900,
+        [(c.TRAIT_PERK_B, 1), (c.TRAIT_PERK_A, 1), (c.TRAIT_PERK_C, 1), (c.TRAIT_PERK_D, 0)],
+    )
+    c.add_plug_set(conn, 100, 0, 901, [(c.INTRINSIC_ADAPTIVE, 1)], key='reusablePlugSetHash')
 
 
 def add_lists(conn, rolls, matches):
@@ -232,14 +220,11 @@ def test_set_bonuses_carry_their_aegis_ranking(conn):
             "INSERT INTO DestinySandboxPerkDefinition VALUES (?, ?, ?, ?)",
             [(1, 'Two', 'Two pieces.', '/two.png'), (2, 'Four', 'Four pieces.', '')],
         )
-        conn.executemany(
-            "INSERT INTO DestinyItemSetPerkDefinition VALUES (?, ?, ?, ?)",
-            [(set_hash, 0, 4, 2), (set_hash, 1, 2, 1)],
-        )
         conn.execute(
             "INSERT INTO aegis_bonus (set_name, pieces, bonus_name, rank, grade) "
             "VALUES ('Test', 2, 'Two', 5, 'B')"
         )
+    c.add_set_perks(conn, set_hash, [(4, 2), (2, 1)])
     bonuses = load.load_set_bonuses(conn)['Test Set']
     assert [(b['pieces'], b['name'], b['icon']) for b in bonuses] == [
         (2, 'Two', 'https://www.bungie.net/two.png'),

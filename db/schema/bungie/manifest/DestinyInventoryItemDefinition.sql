@@ -89,5 +89,42 @@ CREATE TABLE DestinyInventoryItemDefinition (
     -- category. Use the socket's DestinySocketTypeDefinition.plugWhitelist to
     -- determine whether this plug can be inserted into the socket." NULL for
     -- an item that isn't a plug.
-    plugCategoryIdentifier  TEXT
+    plugCategoryIdentifier  TEXT,
+    -- sockets.socketEntries: "Each non-intrinsic (or mutable) socket on an
+    -- item is defined here." Kept for weapons and armor; [] for other items,
+    -- whose sockets nothing reads. A JSON array in socket order (a copy's
+    -- sockets use the same index), each entry a DestinyItemSocketEntryDefinition
+    -- ("The definition information for a specific socket on an item. This
+    -- will determine how the socket behaves in-game.") holding the fields the
+    -- app reads, each when Bungie sends it:
+    --   singleInitialItemHash: "If a valid hash, this is the hash identifier
+    --     for the DestinyInventoryItemDefinition representing the Plug that
+    --     will be initially inserted into the item on item creation.
+    --     Otherwise, this Socket will either start without a plug inserted, or
+    --     will have one randomly inserted." 0 for a socket that starts empty.
+    --   randomizedPlugSetHash: "If a socket has randomized plugs, this is a
+    --     pointer to the set of plugs that could be used, as defined in
+    --     DestinyPlugSetDefinition. If null, the item has no randomized plugs."
+    --   reusablePlugSetHash: "If this socket's plugs come from a reusable
+    --     DestinyPlugSetDefinition, this is the identifier for that set."
+    -- Hashes are kept as sent, so one can name a plug or set that isn't
+    -- stored. Like [{"singleInitialItemHash": 1482024992,
+    -- "randomizedPlugSetHash": 2044988252}, ...].
+    socketEntries           TEXT NOT NULL DEFAULT '[]',
+    -- investmentStats: "If the item has stats, this block will be defined. It
+    -- has the "raw" investment stats for the item." Kept for plugs, where it
+    -- is what the plug adds to the item it's plugged into: an armor stat
+    -- plug's roll, a tuning mod's +5 and -5. [] for other items, whose raw
+    -- stats nothing reads. A JSON array of DestinyItemInvestmentStatDefinition
+    -- ("Represents a "raw" investment stat, before calculated stats are
+    -- calculated and before any DestinyStatGroupDefinition is applied to
+    -- transform the stat into something closer to what you see in-game."):
+    --   statTypeHash: "The hash identifier for the DestinyStatDefinition
+    --     defining this stat."
+    --   value: "The raw "Investment" value for the stat, before
+    --     transformations are performed to turn this raw stat into stats that
+    --     are displayed in the game UI."
+    -- A plug can list the same stat twice. Like [{"statTypeHash": 1735777505,
+    -- "value": 5}, {"statTypeHash": 4244567218, "value": -5}].
+    investmentStats         TEXT NOT NULL DEFAULT '[]'
 );

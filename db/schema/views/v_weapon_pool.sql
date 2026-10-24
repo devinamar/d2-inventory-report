@@ -6,13 +6,13 @@
 -- v_weapon_roll, it shows where a copy's roll sits in what the weapon could have
 -- rolled.
 CREATE VIEW v_weapon_pool AS
-SELECT ds.itemHash AS item_hash, ds.socketIndex AS socket_idx, p.kind, p.name AS perk,
-       e.plugItemHash AS plug_hash, MAX(COALESCE(e.currentlyCanRoll, 1)) AS can_roll,
-       MIN(e.position) AS position
-FROM DestinyItemSocketEntryDefinition ds
-JOIN DestinyInventoryItemDefinition d ON d.hash = ds.itemHash AND d.itemType = 3
-JOIN DestinyItemSocketEntryPlugItemRandomizedDefinition e
-    ON e.plugSetHash = COALESCE(ds.randomizedPlugSetHash, ds.reusablePlugSetHash)
-JOIN v_plug p ON p.hash = e.plugItemHash
-WHERE p.kind IS NOT NULL AND p.name != ''
-GROUP BY ds.itemHash, ds.socketIndex, e.plugItemHash;
+SELECT d.hash AS item_hash, ds.key AS socket_idx, p.kind, p.name AS perk,
+       p.hash AS plug_hash, MAX(COALESCE(e.value ->> 'currentlyCanRoll', 1)) AS can_roll,
+       MIN(e.key) AS position
+FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) ds
+JOIN DestinyPlugSetDefinition ps
+    ON ps.hash = COALESCE(ds.value ->> 'randomizedPlugSetHash', ds.value ->> 'reusablePlugSetHash')
+JOIN json_each(ps.reusablePlugItems) e
+JOIN v_plug p ON p.hash = e.value ->> 'plugItemHash'
+WHERE d.itemType = 3 AND p.kind IS NOT NULL AND p.name != ''
+GROUP BY d.hash, ds.key, p.hash;

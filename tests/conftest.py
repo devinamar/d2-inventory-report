@@ -303,18 +303,18 @@ def conn():
     with c:
         c.executemany(
             "INSERT INTO DestinyInventoryItemDefinition "
-            "(hash, name, description, icon, plugCategoryIdentifier) VALUES (?, ?, ?, ?, ?)",
+            "(hash, name, description, icon, plugCategoryIdentifier, investmentStats) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (h, e['name'], e['description'], e['icon'], e['category'])
+                (
+                    h,
+                    e['name'],
+                    e['description'],
+                    e['icon'],
+                    e['category'],
+                    json.dumps(e['investmentStats']),
+                )
                 for h, e in PLUG_DB.items()
-            ],
-        )
-        c.executemany(
-            "INSERT INTO DestinyItemInvestmentStatDefinition VALUES (?, ?, ?, ?)",
-            [
-                (h, position, stat['statTypeHash'], stat['value'])
-                for h, e in PLUG_DB.items()
-                for position, stat in enumerate(e.get('investmentStats', []))
             ],
         )
         c.executemany(
@@ -340,10 +340,16 @@ def conn():
 # the profile extract write them.
 
 
+def socket_entries(plugs) -> str:
+    # A definition's socketEntries: one entry per starting plug, 0 for a
+    # socket that starts empty (None).
+    return json.dumps([{'singleInitialItemHash': plug or 0} for plug in plugs])
+
+
 def add_weapon_def(
     conn, item_hash, name='Test Rifle', tier=5, damage_type=1, sockets=None, **fields
 ):
-    # A kinetic Auto Rifle definition and one socket entry per entry in
+    # A kinetic Auto Rifle definition with one socket entry per entry in
     # sockets, the socket's starting plug (default: the Adaptive Frame
     # intrinsic). fields sets other DestinyInventoryItemDefinition columns.
     if sockets is None:
@@ -359,6 +365,7 @@ def add_weapon_def(
         'tierType': tier,
         'bucketTypeHash': KINETIC_BUCKET,
         'defaultDamageTypeHash': damage_hash,
+        'socketEntries': socket_entries(sockets),
         **fields,
     }
     with conn:
@@ -367,10 +374,25 @@ def add_weapon_def(
             f"VALUES ({', '.join('?' * len(columns))})",
             tuple(columns.values()),
         )
-        conn.executemany(
-            "INSERT INTO DestinyItemSocketEntryDefinition "
-            "(itemHash, socketIndex, singleInitialItemHash) VALUES (?, ?, ?)",
-            [(item_hash, idx, plug) for idx, plug in enumerate(sockets)],
+
+
+def add_plug_set(conn, item_hash, socket_idx, set_hash, plugs, key='randomizedPlugSetHash'):
+    # A plug set listing plugs ([(plug hash, currentlyCanRoll)]) in that
+    # order, named by the definition's socket socket_idx as its key
+    # (randomizedPlugSetHash, or reusablePlugSetHash for a set to switch to).
+    with conn:
+        conn.execute(
+            "INSERT INTO DestinyPlugSetDefinition VALUES (?, ?)",
+            (
+                set_hash,
+                json.dumps([{'plugItemHash': h, 'currentlyCanRoll': bool(r)} for h, r in plugs]),
+            ),
+        )
+        conn.execute(
+            "UPDATE DestinyInventoryItemDefinition "
+            f"SET socketEntries = json_set(socketEntries, '$[{socket_idx}].{key}', ?) "
+            "WHERE hash = ?",
+            (set_hash, item_hash),
         )
 
 
@@ -395,19 +417,35 @@ def add_armor_def(
     with conn:
         if set_name:
             conn.execute(
-                "INSERT OR IGNORE INTO DestinyEquipableItemSetDefinition VALUES (?, ?)",
+                "INSERT OR IGNORE INTO DestinyEquipableItemSetDefinition (hash, name) "
+                "VALUES (?, ?)",
                 (set_hash, set_name),
             )
         conn.execute(
             "INSERT INTO DestinyInventoryItemDefinition "
-            "(hash, name, itemType, classType, tierType, bucketTypeHash, equipableItemSetHash) "
-            "VALUES (?, ?, 2, ?, ?, ?, ?)",
-            (item_hash, name, CLASS_TYPES[armor_class], tier, BUCKET_HASHES[slot], set_hash),
+            "(hash, name, itemType, classType, tierType, bucketTypeHash, equipableItemSetHash, "
+            "socketEntries) VALUES (?, ?, 2, ?, ?, ?, ?, ?)",
+            (
+                item_hash,
+                name,
+                CLASS_TYPES[armor_class],
+                tier,
+                BUCKET_HASHES[slot],
+                set_hash,
+                socket_entries(sockets),
+            ),
         )
-        conn.executemany(
-            "INSERT INTO DestinyItemSocketEntryDefinition "
-            "(itemHash, socketIndex, singleInitialItemHash) VALUES (?, ?, ?)",
-            [(item_hash, idx, plug) for idx, plug in enumerate(sockets)],
+
+
+def add_set_perks(conn, set_hash, perks):
+    # The armor set's bonuses, perks: [(requiredSetCount, sandboxPerkHash)].
+    with conn:
+        conn.execute(
+            "UPDATE DestinyEquipableItemSetDefinition SET setPerks = ? WHERE hash = ?",
+            (
+                json.dumps([{'requiredSetCount': n, 'sandboxPerkHash': h} for n, h in perks]),
+                set_hash,
+            ),
         )
 
 
@@ -515,15 +553,17 @@ def add_armor(
     with conn:
         conn.executemany(
             "INSERT OR IGNORE INTO DestinyInventoryItemDefinition "
-            "(hash, name, plugCategoryIdentifier) VALUES (?, ?, ?)",
-            [(h, plug_name, category) for h, plug_name, category, _ in plugs],
-        )
-        conn.executemany(
-            "INSERT OR IGNORE INTO DestinyItemInvestmentStatDefinition VALUES (?, ?, ?, ?)",
+            "(hash, name, plugCategoryIdentifier, investmentStats) VALUES (?, ?, ?, ?)",
             [
-                (h, position, stat_hash[key], value)
-                for h, _, _, values in plugs
-                for position, (key, value) in enumerate(values.items())
+                (
+                    h,
+                    plug_name,
+                    category,
+                    json.dumps(
+                        [{'statTypeHash': stat_hash[k], 'value': v} for k, v in values.items()]
+                    ),
+                )
+                for h, plug_name, category, values in plugs
             ],
         )
     sockets = [stat_plug[0], *(h for h, _, _, _ in perk_plugs)]

@@ -66,15 +66,14 @@ def test_a_weapon_copy_loads_with_its_roll(conn):
 
 def test_an_armor_copy_loads_with_its_set_bonus_and_stats(conn):
     with conn:
-        conn.execute("INSERT INTO DestinyEquipableItemSetDefinition VALUES (77, 'Bushido')")
+        conn.execute(
+            "INSERT INTO DestinyEquipableItemSetDefinition (hash, name) VALUES (77, 'Bushido')"
+        )
         conn.executemany(
             "INSERT INTO DestinySandboxPerkDefinition (hash, name, description) VALUES (?, ?, ?)",
             [(701, 'Two', 'two pieces.'), (702, 'Four', 'four pieces.')],
         )
-        conn.executemany(
-            "INSERT INTO DestinyItemSetPerkDefinition VALUES (77, ?, ?, ?)",
-            [(0, 2, 701), (1, 4, 702)],
-        )
+    c.add_set_perks(conn, 77, [(2, 701), (4, 702)])
     c.add_armor_def(conn, 400, set_hash=77, sockets=[c.ARMOR_STAT_PLUG_A])
     save_profile(
         conn,

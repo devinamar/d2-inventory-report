@@ -41,34 +41,32 @@ WITH armor AS (
           WHERE itemType = 2)
 ),
 set_bonus AS (
-    SELECT sp.equipableItemSetHash,
-           MAX(CASE WHEN sp.requiredSetCount = 2
+    SELECT es.hash AS equipableItemSetHash,
+           MAX(CASE WHEN sp.value ->> 'requiredSetCount' = 2
                     THEN sb.name || ': ' || COALESCE(sb.description, '') END) AS two_pc,
-           MAX(CASE WHEN sp.requiredSetCount = 4
+           MAX(CASE WHEN sp.value ->> 'requiredSetCount' = 4
                     THEN sb.name || ': ' || COALESCE(sb.description, '') END) AS four_pc
-    FROM DestinyItemSetPerkDefinition sp
-    JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.sandboxPerkHash
+    FROM DestinyEquipableItemSetDefinition es, json_each(es.setPerks) sp
+    JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
     WHERE COALESCE(sb.name, '') != ''
-    GROUP BY sp.equipableItemSetHash
+    GROUP BY es.hash
 ),
 base AS (
-    SELECT s.itemInstanceId, k.key, SUM(inv.value) AS value
+    SELECT s.itemInstanceId, k.key, SUM(inv.value ->> 'value') AS value
     FROM DestinyItemSocketsComponent s
     JOIN DestinyInventoryItemDefinition p ON p.hash = s.plugHash
-    JOIN DestinyItemInvestmentStatDefinition inv ON inv.itemHash = p.hash
-    JOIN stat_key k ON k.statHash = inv.statTypeHash
+    JOIN json_each(p.investmentStats) inv
+    JOIN stat_key k ON k.statHash = inv.value ->> 'statTypeHash'
     WHERE p.plugCategoryIdentifier IN ('intrinsics', 'armor_stats')
     GROUP BY s.itemInstanceId, k.key
 ),
 exotic_perk AS (
     SELECT itemHash, name, description, icon FROM (
-        SELECT ds.itemHash, p.name, p.description, p.icon,
-               ROW_NUMBER() OVER (PARTITION BY ds.itemHash ORDER BY ds.socketIndex) AS n
-        FROM DestinyItemSocketEntryDefinition ds
-        JOIN DestinyInventoryItemDefinition d
-            ON d.hash = ds.itemHash AND d.itemType = 2 AND d.tierType = 6
-        JOIN v_plug p ON p.hash = ds.singleInitialItemHash
-        WHERE p.plugCategoryIdentifier = 'intrinsics' AND (p.name != '' OR p.description != ''))
+        SELECT d.hash AS itemHash, p.name, p.description, p.icon,
+               ROW_NUMBER() OVER (PARTITION BY d.hash ORDER BY ds.key) AS n
+        FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) ds
+        JOIN v_plug p ON p.hash = ds.value ->> 'singleInitialItemHash'
+        WHERE d.itemType = 2 AND d.tierType = 6 AND p.plugCategoryIdentifier = 'intrinsics' AND (p.name != '' OR p.description != ''))
     WHERE n = 1
 )
 SELECT i.itemInstanceId AS instance_id, i.itemHash AS item_hash,

@@ -118,6 +118,32 @@ COSMETICS = {
         {'plugItemHash': 3921006357, 'currentlyCanRoll': True},
     ],
 }
+# An Armor 3.0 tuning mod: its investment stats are what it adds to the piece
+# it's plugged into.
+TUNING_MOD = {
+    'hash': 309000506,
+    'displayProperties': {'name': '+Grenade / -Melee'},
+    'itemType': 19,
+    'itemTypeDisplayName': 'General Armor Mod',
+    'classType': 3,
+    'inventory': {'tierType': 2, 'bucketTypeHash': 2422292810},
+    'plug': {'plugCategoryIdentifier': 'core.gear_systems.armor_tiering.plugs.tuning.mods'},
+    'investmentStats': [
+        {'statTypeHash': 1735777505, 'value': 5, 'isConditionallyActive': False},
+        {'statTypeHash': 4244567218, 'value': -5, 'isConditionallyActive': False},
+    ],
+}
+# An armor set and its two bonuses.
+ATHEONS_MEMORY = {
+    'hash': 741162535,
+    'displayProperties': {'name': "Atheon's Memory"},
+    'setPerks': [
+        {'requiredSetCount': 2, 'sandboxPerkHash': 17188252},
+        {'requiredSetCount': 4, 'sandboxPerkHash': 17188253},
+    ],
+}
+RADIOLARIA_BREACH = {'hash': 17188252, 'displayProperties': {'name': 'Radiolaria Breach'}}
+COLLECTIVE_POWER = {'hash': 17188253, 'displayProperties': {'name': 'Collective Power'}}
 
 # The manifest's tables the copy reads, each holding its definitions.
 DEFINITIONS = {
@@ -127,7 +153,7 @@ DEFINITIONS = {
     'DestinyBreakerTypeDefinition': [],
     'DestinyStatDefinition': [],
     'DestinyClassDefinition': [],
-    'DestinyEquipableItemSetDefinition': [],
+    'DestinyEquipableItemSetDefinition': [ATHEONS_MEMORY],
     'DestinyInventoryItemDefinition': [
         FATEBRINGER,
         ADAPTIVE_FRAME,
@@ -138,6 +164,7 @@ DEFINITIONS = {
         HAND_CANNONS,
         TERRORS_END,
         KILL_TRACKER,
+        TUNING_MOD,
     ],
     'DestinyInventoryBucketDefinition': [
         {'hash': 1498876634, 'displayProperties': {'name': 'Kinetic Weapons'}, 'bucketOrder': 20},
@@ -145,7 +172,7 @@ DEFINITIONS = {
     ],
     'DestinyCollectibleDefinition': [],
     'DestinyObjectiveDefinition': [ENEMIES_DEFEATED],
-    'DestinySandboxPerkDefinition': [],
+    'DestinySandboxPerkDefinition': [RADIOLARIA_BREACH, COLLECTIVE_POWER],
     'DestinyPlugSetDefinition': [COSMETICS],
     'DestinyInventoryItemConstantsDefinition': [],
 }
@@ -188,6 +215,7 @@ def test_weapons_armor_plugs_and_gunsmith_orders_are_copied_and_the_rest_skipped
         'Astrograph',
         'Hand Cannons',
         'Kill Tracker',
+        '+Grenade / -Melee',
     }
     ammo = db.execute('SELECT ammoType FROM DestinyInventoryItemDefinition WHERE hash = 4219826183')
     assert ammo.fetchone()[0] == 1  # primary
@@ -209,15 +237,49 @@ def test_the_objectives_plugs_count_are_copied_with_their_badges(db, manifest_pa
     ]
 
 
-def test_a_plug_list_entry_that_isnt_a_plug_is_skipped(db, manifest_path):
-    # The cosmetics list names the Classified item, which the copy doesn't
-    # keep; the copy goes ahead without that entry.
+def json_column(db, table, column, key):
+    # A JSON column of the row keyed by hash key, parsed.
+    row = db.execute(f'SELECT {column} FROM {table} WHERE hash = ?', (key,)).fetchone()
+    return json.loads(row[0])
+
+
+def test_a_weapon_keeps_its_sockets_and_a_plug_its_stats_in_its_own_row(db, manifest_path):
+    # Each list holds the fields the app reads, in Bungie's order: the tuning
+    # mod's isConditionallyActive goes. A weapon's stats and a plug's sockets
+    # aren't kept, so they're [].
     assert manifest.ingest_manifest(db, manifest_path, VERSION)
-    rows = db.execute(
-        'SELECT plugSetHash, position, plugItemHash, currentlyCanRoll '
-        'FROM DestinyItemSocketEntryPlugItemRandomizedDefinition'
-    )
-    assert [tuple(r) for r in rows] == [(236342179, 0, 2412474869, 1)]
+    item = 'DestinyInventoryItemDefinition'
+    assert json_column(db, item, 'socketEntries', 4219826183) == [
+        {'singleInitialItemHash': 1294026524, 'reusablePlugSetHash': 1}
+    ]
+    assert json_column(db, item, 'investmentStats', 4219826183) == []
+    assert json_column(db, item, 'investmentStats', 309000506) == [
+        {'statTypeHash': 1735777505, 'value': 5},
+        {'statTypeHash': 4244567218, 'value': -5},
+    ]
+    assert json_column(db, item, 'socketEntries', 309000506) == []
+
+
+def test_an_armor_set_keeps_its_bonuses_and_their_perks_are_copied(db, manifest_path):
+    assert manifest.ingest_manifest(db, manifest_path, VERSION)
+    assert json_column(db, 'DestinyEquipableItemSetDefinition', 'setPerks', 741162535) == [
+        {'requiredSetCount': 2, 'sandboxPerkHash': 17188252},
+        {'requiredSetCount': 4, 'sandboxPerkHash': 17188253},
+    ]
+    names = [
+        r[0] for r in db.execute('SELECT name FROM DestinySandboxPerkDefinition ORDER BY hash')
+    ]
+    assert names == ['Radiolaria Breach', 'Collective Power']
+
+
+def test_a_plug_set_keeps_its_entries_as_listed(db, manifest_path):
+    # The cosmetics list names the Classified item, which the copy doesn't
+    # keep: its entry stays as sent, and views joining on stored plugs skip it.
+    assert manifest.ingest_manifest(db, manifest_path, VERSION)
+    assert json_column(db, 'DestinyPlugSetDefinition', 'reusablePlugItems', 236342179) == [
+        {'plugItemHash': 2412474869, 'currentlyCanRoll': True},
+        {'plugItemHash': 3921006357, 'currentlyCanRoll': True},
+    ]
 
 
 def test_a_version_already_copied_is_not_copied_again(db, manifest_path):

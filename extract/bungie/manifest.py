@@ -40,13 +40,29 @@ ITEM_COLUMNS = (
     'collectibleHash',
     'traitIds',
     'plugCategoryIdentifier',
+    'socketEntries',
+    'investmentStats',
 )
+
+# The fields of each nested entry the app reads, kept in the JSON columns.
+SOCKET_ENTRY_FIELDS = ('singleInitialItemHash', 'randomizedPlugSetHash', 'reusablePlugSetHash')
+INVESTMENT_STAT_FIELDS = ('statTypeHash', 'value')
+PLUG_SET_ITEM_FIELDS = ('plugItemHash', 'currentlyCanRoll')
+SET_PERK_FIELDS = ('requiredSetCount', 'sandboxPerkHash')
+
+
+def trimmed(entries, fields) -> str:
+    # entries, a list of Bungie's objects, as a JSON array keeping only fields
+    # (each entry the ones it has); '[]' for none.
+    return json.dumps([{k: e[k] for k in fields if k in e} for e in entries or []])
 
 
 def item_row(obj) -> tuple:
     # A DestinyInventoryItemDefinition row (ITEM_COLUMNS): the fields the app
     # reads, as the manifest has them. plugCategoryIdentifier is '' for a plug
-    # without one and NULL for an item that isn't a plug.
+    # without one and NULL for an item that isn't a plug. socketEntries is
+    # kept for weapons and armor and investmentStats for plugs, the only ones
+    # the app reads; each is [] otherwise.
     props = obj.get('displayProperties') or {}
     inventory = obj.get('inventory') or {}
     plug = obj.get('plug')
@@ -58,6 +74,12 @@ def item_row(obj) -> tuple:
     if trait_ids is not None:
         trait_ids = json.dumps(trait_ids)
     equipping = obj.get('equippingBlock') or {}
+    socket_entries = []
+    if obj.get('itemType') in (WEAPON_ITEM_TYPE, ARMOR_ITEM_TYPE):
+        socket_entries = (obj.get('sockets') or {}).get('socketEntries')
+    investment_stats = []
+    if category is not None:
+        investment_stats = obj.get('investmentStats')
     return (
         obj['hash'],
         props.get('name'),
@@ -75,6 +97,8 @@ def item_row(obj) -> tuple:
         obj.get('collectibleHash'),
         trait_ids,
         category,
+        trimmed(socket_entries, SOCKET_ENTRY_FIELDS),
+        trimmed(investment_stats, INVESTMENT_STAT_FIELDS),
     )
 
 
@@ -83,22 +107,12 @@ def upsert(conn, table: str, columns: tuple, rows: list) -> None:
     # there. Unlike INSERT OR REPLACE this keeps the row, so the rows that
     # reference it stay valid.
     sets = ', '.join(f'{c} = excluded.{c}' for c in columns[1:])
-    if sets:
-        conflict = f'ON CONFLICT({columns[0]}) DO UPDATE SET {sets}'
-    else:
-        conflict = 'ON CONFLICT DO NOTHING'
     conn.executemany(
         f"INSERT INTO {table} ({', '.join(columns)}) "
-        f"VALUES ({', '.join('?' * len(columns))}) {conflict}",
+        f"VALUES ({', '.join('?' * len(columns))}) "
+        f"ON CONFLICT({columns[0]}) DO UPDATE SET {sets}",
         rows,
     )
-
-
-def replace_rows(conn, table: str, rows: list) -> None:
-    # Replace every row of a table nothing else points at.
-    conn.execute(f"DELETE FROM {table}")
-    if rows:
-        conn.executemany(f"INSERT INTO {table} VALUES ({', '.join('?' * len(rows[0]))})", rows)
 
 
 def ingest_manifest(conn, manifest_path, version: str) -> bool:
@@ -132,24 +146,27 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             (o['hash'], o.get('classType'), (o.get('displayProperties') or {}).get('name'))
             for o in definitions(mconn, 'DestinyClassDefinition')
         ]
-        set_rows, set_perk_rows = [], []
+        set_rows, perk_hashes = [], set()
         for o in definitions(mconn, 'DestinyEquipableItemSetDefinition'):
-            set_rows.append((o['hash'], (o.get('displayProperties') or {}).get('name')))
-            for position, perk in enumerate(o.get('setPerks') or []):
-                set_perk_rows.append(
-                    (o['hash'], position, perk.get('requiredSetCount'), perk.get('sandboxPerkHash'))
+            perks = o.get('setPerks') or []
+            set_rows.append(
+                (
+                    o['hash'],
+                    (o.get('displayProperties') or {}).get('name'),
+                    trimmed(perks, SET_PERK_FIELDS),
                 )
+            )
+            perk_hashes.update(perk.get('sandboxPerkHash') for perk in perks)
 
-        # Weapons, armor and plugs: one row each, a weapon's or armor piece's
-        # sockets, a plug's investment stats, and the hashes they name.
-        item_rows, socket_rows, stat_value_rows = [], [], []
-        plug_hashes, objective_hashes, collectible_hashes, bucket_hashes = (
+        # Weapons, armor and plugs: one row each, and the hashes they name.
+        item_rows = []
+        named_sets, objective_hashes, collectible_hashes, bucket_hashes = (
             set(),
             set(),
             set(),
             set(),
         )
-        weapons = armor = 0
+        weapons = armor = plugs = 0
         for obj in definitions(mconn, 'DestinyInventoryItemDefinition'):
             is_weapon = obj.get('itemType') == WEAPON_ITEM_TYPE
             is_plug = isinstance(obj.get('plug'), dict)
@@ -166,23 +183,15 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
                 else:
                     armor += 1
                 bucket_hashes.add((obj.get('inventory') or {}).get('bucketTypeHash'))
-                for idx, se in enumerate((obj.get('sockets') or {}).get('socketEntries') or []):
-                    socket_rows.append(
-                        (
-                            obj['hash'],
-                            idx,
-                            se.get('singleInitialItemHash') or None,
-                            se.get('randomizedPlugSetHash') or None,
-                            se.get('reusablePlugSetHash') or None,
-                        )
+                for se in (obj.get('sockets') or {}).get('socketEntries') or []:
+                    named_sets.update(
+                        h
+                        for h in (se.get('randomizedPlugSetHash'), se.get('reusablePlugSetHash'))
+                        if h
                     )
             if is_plug:
-                plug_hashes.add(obj['hash'])
+                plugs += 1
                 objective_hashes.update((obj.get('objectives') or {}).get('objectiveHashes') or [])
-                for position, stat in enumerate(obj.get('investmentStats') or []):
-                    stat_value_rows.append(
-                        (obj['hash'], position, stat.get('statTypeHash'), stat.get('value'))
-                    )
 
         # What the items name: their buckets, the weapons' collectibles, the
         # plugs' objectives and the set bonuses' perks.
@@ -207,7 +216,6 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             for o in definitions(mconn, 'DestinyObjectiveDefinition')
             if o['hash'] in objective_hashes
         ]
-        perk_hashes = {r[3] for r in set_perk_rows}
         sandbox_perk_rows = [
             (
                 o['hash'],
@@ -219,22 +227,12 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             if o['hash'] in perk_hashes
         ]
 
-        # The plug sets the sockets name, and their plugs. An entry whose plug
-        # isn't a stored plug is skipped.
-        named_sets = {h for r in socket_rows for h in r[3:5] if h}
-        plug_set_rows, plug_set_item_rows, skipped = [], [], 0
-        for o in definitions(mconn, 'DestinyPlugSetDefinition'):
-            if o['hash'] not in named_sets:
-                continue
-            plug_set_rows.append((o['hash'],))
-            for position, p in enumerate(o.get('reusablePlugItems') or []):
-                if p.get('plugItemHash') not in plug_hashes:
-                    skipped += 1
-                    continue
-                can_roll = p.get('currentlyCanRoll')
-                if can_roll is not None:
-                    can_roll = int(can_roll)
-                plug_set_item_rows.append((o['hash'], position, p['plugItemHash'], can_roll))
+        # The plug sets the sockets name, each with its plugs as listed.
+        plug_set_rows = [
+            (o['hash'], trimmed(o.get('reusablePlugItems'), PLUG_SET_ITEM_FIELDS))
+            for o in definitions(mconn, 'DestinyPlugSetDefinition')
+            if o['hash'] in named_sets
+        ]
 
         # Gear tier pip images and masterwork borders.
         constants_rows = [
@@ -251,7 +249,6 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
     # Tables other rows point at are upserted, never emptied: stored copies
     # and wishlist rolls point at items, and copies at stats, damage types and
     # objectives, so a row missing from a newer manifest must not orphan them.
-    # The rows hanging off an item, a plug set or an armor set are replaced.
     with conn:
         upsert(
             conn, 'DestinyDamageTypeDefinition', ('hash', 'enumValue', 'name', 'icon'), damage_rows
@@ -259,14 +256,13 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
         upsert(conn, 'DestinyBreakerTypeDefinition', ('hash', 'name', 'icon'), breaker_rows)
         upsert(conn, 'DestinyStatDefinition', ('hash', 'name', 'icon'), stat_rows)
         upsert(conn, 'DestinyClassDefinition', ('hash', 'classType', 'name'), class_rows)
-        upsert(conn, 'DestinyEquipableItemSetDefinition', ('hash', 'name'), set_rows)
+        upsert(conn, 'DestinyEquipableItemSetDefinition', ('hash', 'name', 'setPerks'), set_rows)
         upsert(
             conn,
             'DestinySandboxPerkDefinition',
             ('hash', 'name', 'description', 'icon'),
             sandbox_perk_rows,
         )
-        replace_rows(conn, 'DestinyItemSetPerkDefinition', set_perk_rows)
         upsert(
             conn, 'DestinyInventoryBucketDefinition', ('hash', 'name', 'bucketOrder'), bucket_rows
         )
@@ -278,10 +274,7 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             objective_rows,
         )
         upsert(conn, 'DestinyInventoryItemDefinition', ITEM_COLUMNS, item_rows)
-        replace_rows(conn, 'DestinyItemSocketEntryDefinition', socket_rows)
-        replace_rows(conn, 'DestinyItemInvestmentStatDefinition', stat_value_rows)
-        upsert(conn, 'DestinyPlugSetDefinition', ('hash',), plug_set_rows)
-        replace_rows(conn, 'DestinyItemSocketEntryPlugItemRandomizedDefinition', plug_set_item_rows)
+        upsert(conn, 'DestinyPlugSetDefinition', ('hash', 'reusablePlugItems'), plug_set_rows)
         upsert(
             conn,
             'DestinyInventoryItemConstantsDefinition',
@@ -295,9 +288,7 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
         )
         conn.execute("INSERT INTO manifest_version VALUES (?)", (version,))
     print(
-        f"  Database: ingested manifest {version} ({len(plug_hashes):,} plugs, "
+        f"  Database: ingested manifest {version} ({plugs:,} plugs, "
         f"{weapons:,} weapons, {armor:,} armor, {len(plug_set_rows):,} plug sets)"
     )
-    if skipped:
-        print(f"  Database: skipped {skipped} plug-set entries naming an unknown plug")
     return True

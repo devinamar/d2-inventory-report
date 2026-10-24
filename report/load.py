@@ -527,14 +527,13 @@ ORDER BY c.class_n, a.slot_order, lower(a.name), COALESCE(pr.keeper_id, a.instan
 # Every armor set's bonuses, 2-piece first: Bungie's name, text and icon for
 # each, by set name.
 SET_BONUSES = """
-SELECT DISTINCT s.name AS set_name, p.requiredSetCount AS pieces, sb.name,
+SELECT DISTINCT s.name AS set_name, sp.value ->> 'requiredSetCount' AS pieces, sb.name,
        COALESCE(sb.description, '') AS description,
        CASE WHEN COALESCE(sb.icon, '') = '' THEN ''
             ELSE 'https://www.bungie.net' || sb.icon END AS icon
-FROM DestinyEquipableItemSetDefinition s
-JOIN DestinyItemSetPerkDefinition p ON p.equipableItemSetHash = s.hash
-JOIN DestinySandboxPerkDefinition sb ON sb.hash = p.sandboxPerkHash
-ORDER BY s.name, p.requiredSetCount
+FROM DestinyEquipableItemSetDefinition s, json_each(s.setPerks) sp
+JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
+ORDER BY s.name, pieces
 """
 
 # Every armor set preference as stored: by grade (S first, unclassified last),
@@ -590,10 +589,10 @@ WITH version AS (
            ROW_NUMBER() OVER (
                PARTITION BY lower(d.name)
                ORDER BY EXISTS (
-                   SELECT 1 FROM DestinyItemSocketEntryDefinition e
-                   JOIN DestinyInventoryItemDefinition t ON t.hash = e.singleInitialItemHash
-                   WHERE e.itemHash = d.hash
-                     AND t.plugCategoryIdentifier
+                   SELECT 1 FROM json_each(d.socketEntries) e
+                   JOIN DestinyInventoryItemDefinition t
+                       ON t.hash = e.value ->> 'singleInitialItemHash'
+                   WHERE t.plugCategoryIdentifier
                          = 'core.gear_systems.armor_tiering.plugs.tuning.mods'
                ) DESC, d.hash
            ) AS n
@@ -602,10 +601,10 @@ WITH version AS (
     WHERE d.itemType = 2 AND d.tierType = 6
 ),
 perk AS (
-    SELECT e.itemHash, t.hash, t.name, t.description,
-           ROW_NUMBER() OVER (PARTITION BY e.itemHash ORDER BY e.socketIndex) AS n
-    FROM DestinyItemSocketEntryDefinition e
-    JOIN DestinyInventoryItemDefinition t ON t.hash = e.singleInitialItemHash
+    SELECT d.hash AS itemHash, t.hash, t.name, t.description,
+           ROW_NUMBER() OVER (PARTITION BY d.hash ORDER BY e.key) AS n
+    FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) e
+    JOIN DestinyInventoryItemDefinition t ON t.hash = e.value ->> 'singleInitialItemHash'
     WHERE t.name <> '' AND (t.plugCategoryIdentifier = 'intrinsics'
                             OR t.plugCategoryIdentifier LIKE 'enhancements.exotic%')
 )

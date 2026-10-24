@@ -85,9 +85,7 @@ LEFT JOIN DestinyDamageTypeDefinition wdt ON wdt.hash = d.defaultDamageTypeHash
 LEFT JOIN DestinyItemSocketsComponent s0
     ON s0.itemInstanceId = i.itemInstanceId AND s0.socketIndex = 0
 LEFT JOIN v_plug cp ON cp.hash = s0.plugHash
-LEFT JOIN DestinyItemSocketEntryDefinition ds0
-    ON ds0.itemHash = i.itemHash AND ds0.socketIndex = 0
-LEFT JOIN v_plug ip ON ip.hash = ds0.singleInitialItemHash
+LEFT JOIN v_plug ip ON ip.hash = d.socketEntries ->> '$[0].singleInitialItemHash'
 LEFT JOIN stat_key sk ON sk.key = 'rpm'
 LEFT JOIN DestinyItemStatsComponent st
     ON st.itemInstanceId = i.itemInstanceId AND st.statHash = sk.statHash
