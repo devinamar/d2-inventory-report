@@ -46,8 +46,9 @@ set_bonus AS (
                     THEN sb.name || ': ' || COALESCE(sb.description, '') END) AS two_pc,
            MAX(CASE WHEN sp.value ->> 'requiredSetCount' = 4
                     THEN sb.name || ': ' || COALESCE(sb.description, '') END) AS four_pc
-    FROM DestinyEquipableItemSetDefinition es, json_each(es.setPerks) sp
-    JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
+    FROM DestinyEquipableItemSetDefinition es
+    CROSS JOIN json_each(es.setPerks) sp
+    CROSS JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
     WHERE COALESCE(sb.name, '') != ''
     GROUP BY es.hash
 ),
@@ -64,8 +65,9 @@ exotic_perk AS (
     SELECT itemHash, name, description, icon FROM (
         SELECT d.hash AS itemHash, p.name, p.description, p.icon,
                ROW_NUMBER() OVER (PARTITION BY d.hash ORDER BY ds.key) AS n
-        FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) ds
-        JOIN v_plug p ON p.hash = ds.value ->> 'singleInitialItemHash'
+        FROM DestinyInventoryItemDefinition d
+        CROSS JOIN json_each(d.socketEntries) ds
+        CROSS JOIN v_plug p ON p.hash = ds.value ->> 'singleInitialItemHash'
         WHERE d.itemType = 2 AND d.tierType = 6 AND p.plugCategoryIdentifier = 'intrinsics' AND (p.name != '' OR p.description != ''))
     WHERE n = 1
 )

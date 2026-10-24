@@ -531,8 +531,9 @@ SELECT DISTINCT s.name AS set_name, sp.value ->> 'requiredSetCount' AS pieces, s
        COALESCE(sb.description, '') AS description,
        CASE WHEN COALESCE(sb.icon, '') = '' THEN ''
             ELSE 'https://www.bungie.net' || sb.icon END AS icon
-FROM DestinyEquipableItemSetDefinition s, json_each(s.setPerks) sp
-JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
+FROM DestinyEquipableItemSetDefinition s
+CROSS JOIN json_each(s.setPerks) sp
+CROSS JOIN DestinySandboxPerkDefinition sb ON sb.hash = sp.value ->> 'sandboxPerkHash'
 ORDER BY s.name, pieces
 """
 
@@ -590,7 +591,7 @@ WITH version AS (
                PARTITION BY lower(d.name)
                ORDER BY EXISTS (
                    SELECT 1 FROM json_each(d.socketEntries) e
-                   JOIN DestinyInventoryItemDefinition t
+                   CROSS JOIN DestinyInventoryItemDefinition t
                        ON t.hash = e.value ->> 'singleInitialItemHash'
                    WHERE t.plugCategoryIdentifier
                          = 'core.gear_systems.armor_tiering.plugs.tuning.mods'
@@ -603,8 +604,9 @@ WITH version AS (
 perk AS (
     SELECT d.hash AS itemHash, t.hash, t.name, t.description,
            ROW_NUMBER() OVER (PARTITION BY d.hash ORDER BY e.key) AS n
-    FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) e
-    JOIN DestinyInventoryItemDefinition t ON t.hash = e.value ->> 'singleInitialItemHash'
+    FROM DestinyInventoryItemDefinition d
+    CROSS JOIN json_each(d.socketEntries) e
+    CROSS JOIN DestinyInventoryItemDefinition t ON t.hash = e.value ->> 'singleInitialItemHash'
     WHERE t.name <> '' AND (t.plugCategoryIdentifier = 'intrinsics'
                             OR t.plugCategoryIdentifier LIKE 'enhancements.exotic%')
 )

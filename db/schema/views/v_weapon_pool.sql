@@ -9,10 +9,11 @@ CREATE VIEW v_weapon_pool AS
 SELECT d.hash AS item_hash, ds.key AS socket_idx, p.kind, p.name AS perk,
        p.hash AS plug_hash, MAX(COALESCE(e.value ->> 'currentlyCanRoll', 1)) AS can_roll,
        MIN(e.key) AS position
-FROM DestinyInventoryItemDefinition d, json_each(d.socketEntries) ds
-JOIN DestinyPlugSetDefinition ps
+FROM DestinyInventoryItemDefinition d
+CROSS JOIN json_each(d.socketEntries) ds
+CROSS JOIN DestinyPlugSetDefinition ps
     ON ps.hash = COALESCE(ds.value ->> 'randomizedPlugSetHash', ds.value ->> 'reusablePlugSetHash')
-JOIN json_each(ps.reusablePlugItems) e
-JOIN v_plug p ON p.hash = e.value ->> 'plugItemHash'
+CROSS JOIN json_each(ps.reusablePlugItems) e
+CROSS JOIN v_plug p ON p.hash = e.value ->> 'plugItemHash'
 WHERE d.itemType = 3 AND p.kind IS NOT NULL AND p.name != ''
 GROUP BY d.hash, ds.key, p.hash;
