@@ -90,7 +90,7 @@
 <tbody>
 {% for s in sources %}
 <tr>
-<th scope="row"><a href="{{ s.url }}">{{ s.name }}</a></th>
+<th scope="row">{% if s.url %}<a href="{{ s.url }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}</th>
 <td>{{ s.gives }}</td>
 <td><span class="status{% if not s.ok %} bad{% endif %}">{{ s.status }}</span></td>
 <td>{% if s.checked_at %}{{ s.checked_at|day }}{% endif %}</td>

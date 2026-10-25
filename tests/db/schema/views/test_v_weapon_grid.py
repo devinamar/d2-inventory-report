@@ -50,6 +50,24 @@ def test_a_grid_lists_the_pool_the_votes_and_its_copies_perks(conn):
     )
     sockets = [c.INTRINSIC_ADAPTIVE, c.BARREL_PERK_X, c.MAG_PERK_P, c.TRAIT_PERK_A, c.TRAIT_PERK_E]
     c.add_copy(conn, 'a', 100, sockets)
+    # Aegis Endgame (the second list) names Kill Clip and Outlaw, and Voltron
+    # (the first) Kill Clip; a trash roll's Rampage isn't named.
+    with conn:
+        conn.executemany(
+            "INSERT INTO wishlist_source (key, label, url) VALUES (?, ?, '')",
+            [('voltron', 'Voltron'), ('aegis_endgame', 'Aegis')],
+        )
+        conn.executemany(
+            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, perk1, perk2, is_trash) "
+            "VALUES (?, ?, 100, ?, ?, ?)",
+            [
+                (1, 'aegis_endgame', c.TRAIT_PERK_B, c.TRAIT_PERK_C, 0),
+                (2, 'voltron', c.TRAIT_PERK_B, None, 0),
+                (3, 'voltron', c.TRAIT_PERK_A, None, 1),
+            ],
+        )
+    lists = {perk: places for perk, places in grid(conn, 'perk', 'lists')}
+    assert (lists['Kill Clip'], lists['Outlaw'], lists['Rampage']) == ('1 2', '2', '')
     assert grid(conn, 'col', 'label', 'perk', 'own', 'pve_heat', 'pve_pos', 'pve_quiet') == [
         ('barrel', 'Barrel', 'Hammer-Forged Rifling', 0, 10, 1, 0),
         ('magazine', 'Magazine', 'Tactical Mag', 0, 10, 1, 0),

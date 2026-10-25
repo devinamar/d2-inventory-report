@@ -12,6 +12,18 @@ def vault(conn):
     # build; a set with nothing flagged, which only the Markdown lists; a
     # duplicated exotic; and the player's own wishlist.
     c.add_weapon_def(conn, 100, sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
+    c.add_popularity(
+        conn,
+        'Test Rifle',
+        [100],
+        players=120,
+        hard_copies=60,
+        columns=[
+            c.popularity_column('barrel', [('Fluted Barrel', 0.6)], n_eff=110.0),
+            c.popularity_column('traits', [('Rampage + Outlaw', 0.5)], n_eff=40.0),
+            c.popularity_column('trait1', [('Rampage', 0.7)], n_eff=40.0),
+        ],
+    )
     for instance_id in ('w1', 'w2'):
         c.add_copy(conn, instance_id, 100, [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A], gear_tier=5)
         with conn:
@@ -31,14 +43,26 @@ def vault(conn):
 
 
 def test_every_section_explains_itself(conn, tmp_path):
-    # Summary, Data sources, True duplicates, Roll Quality, Armor sets, Builds,
-    # Exotics and Preferences each say what they show, how it was derived and
-    # how to read it.
+    # Summary, Data sources, True duplicates, Roll Quality, Popular, Armor
+    # sets, Builds, Exotics and Preferences each say what they show, how it
+    # was derived and how to read it.
     vault(conn)
     _, md = c.write_report(conn, tmp_path)
     assert md.startswith('# Name#1234: Destiny 2 Inventory Report')
     for heading in ('**What this shows.**', '**How it was derived.**', '**Reading it.**'):
-        assert md.count(heading) == 8
+        assert md.count(heading) == 9
+
+
+def test_popular_lists_every_scored_weapon_with_its_picks_and_pairs(conn, tmp_path):
+    # The Test Rifle's weakest column (its traits, 40 votes) makes it medium;
+    # 60 of its 120 copies came from hard content, so it is an Endgame pick.
+    vault(conn)
+    _, md = c.write_report(conn, tmp_path)
+    assert '### PvE (1 weapons)' in md
+    assert (
+        '| 1 | Test Rifle | Auto Rifle | 120 | medium | yes | Barrel Fluted Barrel 60% · '
+        'Trait 1 Rampage 70% | Rampage + Outlaw 50% |'
+    ) in md
 
 
 def test_the_lists_cover_copies_purges_sets_and_preferences(conn, tmp_path):

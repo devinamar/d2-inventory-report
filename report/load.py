@@ -66,12 +66,14 @@ SELECT (SELECT COUNT(*) FROM v_weapon) AS weapons, (SELECT COUNT(*) FROM v_armor
        COUNT(*) FILTER (WHERE NOT w.has_wishlist) AS uncovered,
        (SELECT COUNT(*) FROM v_armor_pruning WHERE NOT rescued) AS armor_to_purge,
        (SELECT COUNT(*) FROM v_armor_pruning WHERE rescued) AS rescued,
-       (SELECT checked_at FROM source_status WHERE source = 'profile') AS checked_at
+       (SELECT checked_at FROM source_status WHERE source = 'profile') AS checked_at,
+       (SELECT generated_at FROM perk_popularity_file) AS scores_at
 FROM weapon_result w
 """
 
-# Every outside source with what it gives, a link and how it fared this run;
-# ok is 0 for a failed, stale or skipped source, and for one never checked.
+# Every outside source with what it gives, a link ('' for d2-perk-popularity,
+# whose repo is private) and how it fared this run; ok is 0 for a failed,
+# stale or skipped source, and for one never checked.
 SOURCES = """
 WITH source (source, name, gives, url, n) AS (
     VALUES ('manifest', 'Bungie manifest', 'Item, perk and set definitions',
@@ -83,7 +85,8 @@ WITH source (source, name, gives, url, n) AS (
             'https://github.com/Database-Clarity/Live-Clarity-Database', 4),
            ('aegis', 'The Aegis', 'Armor set bonus rankings',
             'https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/',
-            6)
+            6),
+           ('perk_popularity', 'd2-perk-popularity', 'The rolls players run, PvE and PvP', '', 7)
     UNION ALL
     SELECT 'wishlist:' || key, label, 'Weapon rolls to look for', url, 5 FROM wishlist_source
 )
@@ -419,6 +422,128 @@ LEFT JOIN clarity_note cn ON cn.plug_hash = c.plug_hash
 ORDER BY f.slot_order, f.wtype, c.family_name, s.ord, c.n, c.socket_idx, c.slot
 """
 
+# Popular, and the perk grids it and the weapons page open.
+
+# Every weapon d2-perk-popularity scores, per side in rank order, as the Popular
+# page lists it: its popularity there (v_popularity_weapon), its representative
+# version's looks (v_weapon_definition: icon, slot, ammo, season and source),
+# its Endgame badge on each side, how many vault copies its versions have, and
+# top_perks, each scored column's most picked perk (its v_perk plug hash) in
+# socket order, space-separated.
+POPULARITY = """
+WITH owned AS (
+    SELECT v.name, COUNT(*) AS owned
+    FROM v_weapon w
+    JOIN v_popularity_version v ON v.item_hash = w.item_hash
+    GROUP BY v.name
+),
+endgame AS (
+    SELECT name, MAX(CASE WHEN side = 'pve' THEN endgame END) AS pve_endgame,
+           MAX(CASE WHEN side = 'pvp' THEN endgame END) AS pvp_endgame
+    FROM v_popularity_weapon
+    GROUP BY name
+),
+top AS (
+    SELECT p.side, p.name, group_concat(k.plug_hash, ' ' ORDER BY p.col_n) AS top_perks
+    FROM v_popularity_perk p
+    JOIN v_perk k ON k.perk = p.perk
+    WHERE p.rank = 1
+    GROUP BY p.side, p.name
+)
+SELECT w.*, d.icon, d.watermark, d.slot, d.slot_order, d.ammo, d.ammo_icon, d.season_num,
+       d.season_name, d.source, COALESCE(o.owned, 0) AS owned,
+       COALESCE(e.pve_endgame, 0) AS pve_endgame, COALESCE(e.pvp_endgame, 0) AS pvp_endgame,
+       COALESCE(t.top_perks, '') AS top_perks
+FROM v_popularity_weapon w
+LEFT JOIN v_weapon_definition d ON d.item_hash = w.item_hash
+LEFT JOIN owned o ON o.name = w.name
+JOIN endgame e ON e.name = w.name
+LEFT JOIN top t ON t.side = w.side AND t.name = w.name
+ORDER BY w.side, w.rank, w.name
+"""
+
+# Each scored column of each weapon per side (v_popularity_column) with the
+# weapon's grid, in socket order, the weapons in Popular's order: the meta
+# line's confidence per column, and each column's most picked perk for the
+# Markdown.
+POPULAR_COLUMNS = """
+SELECT c.*, w.grid_id
+FROM v_popularity_column c
+JOIN v_popularity_weapon w ON w.side = c.side AND w.name = c.name
+ORDER BY c.side, w.rank, c.name, c.col_n
+"""
+
+# Each weapon's three most picked trait pairs per side, in Popular's order: the
+# Markdown's top pairs.
+POPULAR_PAIRS = """
+SELECT p.side, p.name, p.rank, p.trait1, p.trait2, p.share
+FROM v_popularity_pair p
+JOIN v_popularity_weapon w ON w.side = p.side AND w.name = p.name
+WHERE p.rank <= 3
+ORDER BY p.side, w.rank, p.name, p.rank
+"""
+
+# Every grid's rows (v_weapon_grid) with each perk's plug (v_perk), which names
+# its tooltip and icon, by grid, column and PvE place.
+GRID = """
+SELECT g.*, p.plug_hash
+FROM v_weapon_grid g
+JOIN v_perk p ON p.perk = g.perk
+ORDER BY g.grid_id, g.col_order, g.col, g.pve_pos
+"""
+
+# Each grid's scored trait pairs, both sides' figures together for its lines
+# and tooltips: per side the pair's rank, rel and share, each trait's share
+# with this partner (c1, c2) and the partner's rank among its own (n1, n2);
+# NULL on a side without the pair. Each trait is named by its plug. By grid,
+# then PvE rank.
+GRID_PAIRS = """
+WITH pair AS (
+    SELECT v.grid_id, p.*
+    FROM v_popularity_pair p
+    JOIN (SELECT DISTINCT name, grid_id FROM v_popularity_version) v ON v.name = p.name
+)
+SELECT p.grid_id, a.plug_hash AS a, b.plug_hash AS b,
+       MAX(CASE WHEN p.side = 'pve' THEN p.rank END) AS pve_rank,
+       MAX(CASE WHEN p.side = 'pve' THEN p.rel END) AS pve_rel,
+       MAX(CASE WHEN p.side = 'pve' THEN p.share END) AS pve_share,
+       MAX(CASE WHEN p.side = 'pve' THEN p.trait1_cond END) AS pve_c1,
+       MAX(CASE WHEN p.side = 'pve' THEN p.trait2_cond END) AS pve_c2,
+       MAX(CASE WHEN p.side = 'pve' THEN p.trait1_n END) AS pve_n1,
+       MAX(CASE WHEN p.side = 'pve' THEN p.trait2_n END) AS pve_n2,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.rank END) AS pvp_rank,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.rel END) AS pvp_rel,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.share END) AS pvp_share,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.trait1_cond END) AS pvp_c1,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.trait2_cond END) AS pvp_c2,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.trait1_n END) AS pvp_n1,
+       MAX(CASE WHEN p.side = 'pvp' THEN p.trait2_n END) AS pvp_n2
+FROM pair p
+JOIN v_perk a ON a.perk = p.trait1
+JOIN v_perk b ON b.perk = p.trait2
+GROUP BY p.grid_id, p.trait1, p.trait2
+ORDER BY p.grid_id, pve_rank IS NULL, pve_rank, pvp_rank
+"""
+
+# The choices of the Popular page's filters: each weapon type, slot (in bucket
+# order) and ammo type among the scored weapons, with the ammo badges.
+POPULAR_OPTIONS = """
+SELECT DISTINCT 'ammo' AS kind, d.ammo AS value,
+       upper(substr(d.ammo, 1, 1)) || substr(d.ammo, 2) AS label, d.ammo_icon AS icon,
+       CASE d.ammo WHEN 'primary' THEN 1 WHEN 'special' THEN 2 ELSE 3 END AS n
+FROM v_popularity_weapon w
+JOIN v_weapon_definition d ON d.item_hash = w.item_hash
+WHERE d.ammo != ''
+UNION
+SELECT DISTINCT 'slot', d.slot, replace(d.slot, ' Weapons', ''), '', d.slot_order
+FROM v_popularity_weapon w
+JOIN v_weapon_definition d ON d.item_hash = w.item_hash
+UNION
+SELECT DISTINCT 'type', type, type, '', 0
+FROM v_popularity_weapon
+ORDER BY kind, n, value
+"""
+
 # The Armor 3.0 Legendary pieces, every gear tier, by class, set (grade, then
 # rank within it) and slot, each slot's copies best score first: the set cards.
 # tier_overlay is the gear tier's pip image ('' without one).
@@ -666,6 +791,15 @@ def load(conn) -> dict:
         'roll_quality': rows(ROLL_QUALITY),
         'roll_columns': rows(ROLL_COLUMNS),
         'roll_cells': rows(ROLL_CELLS),
+        'popularity': rows(POPULARITY),
+        'popular_columns': rows(POPULAR_COLUMNS),
+        'popular_pairs': rows(POPULAR_PAIRS),
+        'popular_options': rows(POPULAR_OPTIONS),
+        'popularity_sides': rows("SELECT * FROM v_popularity_side ORDER BY side"),
+        'popularity_rule': conn.execute("SELECT * FROM popularity_rule").fetchone(),
+        'grid': rows(GRID),
+        'grid_pairs': rows(GRID_PAIRS),
+        'perks': rows("SELECT * FROM v_perk ORDER BY plug_hash"),
         'set_pieces': rows(SET_PIECES),
         'legacy': rows(LEGACY),
         'short_builds': rows(SHORT_BUILDS),

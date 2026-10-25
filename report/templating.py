@@ -58,15 +58,40 @@ def short(stats: str) -> str:
     return '·'.join(models.ARMOR_STAT_SHORT_MAP[s] for s in stats.split(','))
 
 
+def pct(share) -> str:
+    # A share as the report shows it: a whole percentage from 10%, one
+    # decimal below (a trailing .0 dropped), '<0.1%' under that; '—' for none.
+    if share is None:
+        return '—'
+    if share >= 0.0995:
+        return f'{int(share * 100 + 0.5)}%'
+    if share >= 0.001:
+        return f'{share * 100:.1f}'.removesuffix('.0') + '%'
+    if share > 0:
+        return '<0.1%'
+    return '0%'
+
+
 def ring_rule(rings: str) -> str:
     # The CSS rule for class l<rings>, a perk ring in the colours of the lists
     # at those places ('1-3'): a list's colour is the --wl token its place
     # comes round to, four in turn. Each list's colour takes a quarter of the
-    # ring, the first's any quarter left over, and the first's is --tint, the
-    # fill's colour.
+    # ring (--ring, its four border colours), the first's any quarter left
+    # over, and the first's is --tint, the fill's colour.
     colors = [f'var(--wl{(int(place) - 1) % 4 + 1})' for place in rings.split('-')]
     sides = ' '.join(colors[i * len(colors) // 4] for i in range(4))
-    return f'.l{rings} {{ --tint: {colors[0]}; border-color: {sides}; }}'
+    return f'.l{rings} {{ --tint: {colors[0]}; --ring: {sides}; }}'
+
+
+def ring_sets(n: int) -> list:
+    # Every set of the list places 1 to n, as a ring class's places ('1',
+    # '1-3', ...): a grid's ring can take any of them.
+    places = range(1, n + 1)
+    return [
+        '-'.join(map(str, chosen))
+        for k in places
+        for chosen in itertools.combinations(places, k)
+    ]
 
 
 ENV = jinja2.Environment(
@@ -76,9 +101,16 @@ ENV = jinja2.Environment(
     lstrip_blocks=True,
 )
 ENV.filters.update(
-    group=group, icons=text_with_icons, dim=dim_query, day=day, short=short, ring_rule=ring_rule
+    group=group,
+    icons=text_with_icons,
+    dim=dim_query,
+    day=day,
+    short=short,
+    pct=pct,
+    ring_rule=ring_rule,
 )
 ENV.globals.update(
+    ring_sets=ring_sets,
     stat_short=models.ARMOR_STAT_SHORT_MAP,
     armor_reasons=armor_pruning.PRUNE_REASONS,
     weapon_reasons=weapon_pruning.PRUNE_REASONS,

@@ -14,11 +14,31 @@ def test_ring_rule_shares_a_ring_between_its_lists_colours():
     # Two lists take half the ring each, three give the first a half; the
     # fifth list comes round to the first colour.
     assert templating.ring_rule('1-3') == (
-        '.l1-3 { --tint: var(--wl1); border-color: var(--wl1) var(--wl1) var(--wl3) var(--wl3); }'
+        '.l1-3 { --tint: var(--wl1); --ring: var(--wl1) var(--wl1) var(--wl3) var(--wl3); }'
     )
     assert templating.ring_rule('2-3-4') == (
-        '.l2-3-4 { --tint: var(--wl2); border-color: var(--wl2) var(--wl2) var(--wl3) var(--wl4); }'
+        '.l2-3-4 { --tint: var(--wl2); --ring: var(--wl2) var(--wl2) var(--wl3) var(--wl4); }'
     )
     assert templating.ring_rule('5') == (
-        '.l5 { --tint: var(--wl1); border-color: var(--wl1) var(--wl1) var(--wl1) var(--wl1); }'
+        '.l5 { --tint: var(--wl1); --ring: var(--wl1) var(--wl1) var(--wl1) var(--wl1); }'
     )
+
+
+def test_ring_sets_are_every_mix_of_the_lists():
+    assert templating.ring_sets(3) == ['1', '2', '3', '1-2', '1-3', '2-3', '1-2-3']
+
+
+def test_a_share_shows_whole_from_10_percent_and_one_decimal_below():
+    shares = [None, 0.0, 0.0004, 0.004, 0.0123, 0.05, 0.0995, 0.225, 0.835, 1.0]
+    assert [templating.pct(s) for s in shares] == [
+        '—',
+        '0%',
+        '<0.1%',
+        '0.4%',
+        '1.2%',
+        '5%',
+        '10%',
+        '23%',
+        '84%',
+        '100%',
+    ]

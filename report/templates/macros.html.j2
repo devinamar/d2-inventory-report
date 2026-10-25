@@ -81,3 +81,54 @@
 {% endif %}
 </div>
 {% endmacro %}
+
+{# A perk grid's row: its perk named by its plug (data-tip: its tooltip and icon), each side's heat (aN, bN; an or bn without scores), place (data-r), share (data-a, data-b, — when unvoted, absent without scores) and quiet trait (qa, qb), the wishlists naming it (data-l), and own for a perk only a copy has. #}
+{% macro grid_row(p) %}<li class="pk {% if p.pve_heat is none %}an{% else %}a{{ p.pve_heat }}{% endif %} {% if p.pvp_heat is none %}bn{% else %}b{{ p.pvp_heat }}{% endif %}{% if p.pve_quiet %} qa{% endif %}{% if p.pvp_quiet %} qb{% endif %}{% if p.own %} own{% endif %}" data-tip="p{{ p.plug_hash }}" data-r="{{ p.pve_pos }} {{ p.pvp_pos }}"{% if p.pve_rel is not none %} data-a="{{ p.pve_share|pct }}"{% endif %}{% if p.pvp_rel is not none %} data-b="{{ p.pvp_share|pct }}"{% endif %}{% if p.lists %} data-l="{{ p.lists }}"{% endif %}><span>{{ p.perk }}</span></li>{% endmacro %}
+
+{# A trait pair's line, drawn when shown: its traits' plugs (data-a, data-b), and per side the pair's rank, rel, share, each trait's share with this partner and the partner's rank among its own. #}
+{% macro pair_path(p) %}<path data-a="p{{ p.a }}" data-b="p{{ p.b }}"{% for side in ('pve', 'pvp') if p[side ~ '_rank'] %} data-{{ side }}="{{ p[side ~ '_rank'] }} {{ p[side ~ '_rel']|round(4) }} {{ p[side ~ '_share']|round(4) }} {{ p[side ~ '_c1']|round(4) }} {{ p[side ~ '_c2']|round(4) }} {{ p[side ~ '_n1'] }} {{ p[side ~ '_n2'] }}"{% endfor %}></path>{% endmacro %}
+
+{# The details line under a weapon's grid for one side: its confidence per column (or once, when every column has the same votes), its hard and normal content's copies and votes, when a copy was last used, and its light.gg page. #}
+{% macro meta_line(w, columns) %}
+<p class="pop-meta on-{{ w.side }}"><span><b>Confidence:</b> {% if w.same %}{{ w.confidence|capitalize }} in every column, from {{ '{:,}'.format(w.weakest_votes) }} effective votes{% else %}{% for c in columns %}{{ c.label }} {{ c.confidence }} ({{ '{:,}'.format(c.votes) }}){% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</span><span><b>Hard content:</b> {{ '{:,}'.format(w.hard_copies) }} copies, {{ w.hard_votes|round|int }} effective votes</span><span><b>Normal content:</b> {{ '{:,}'.format(w.normal_copies) }} copies, {{ w.normal_votes|round|int }} effective votes</span><span><b>Last used:</b> {{ w.last_seen|day }}</span><a class="lgg" href="https://www.light.gg/db/items/{{ w.item_hash }}/" target="_blank" rel="noopener">light.gg</a></p>
+{% endmacro %}
+
+{# A weapon's confidence on a side, its weakest column's, in that level's heat; its tooltip gives the maths. #}
+{% macro confidence_chip(w) %}
+{% set heat = {'high': 'hi', 'medium': 'mid', 'low': 'lo', 'very low': 'vlo'} %}
+{% if w.confidence %}<span class="pop-chip heat-{{ heat[w.confidence] }}" tabindex="0" data-tip="c-{{ w.side }}-{{ w.grid_id }}">{{ w.confidence|capitalize }} confidence</span>{% endif %}
+{% endmacro %}
+
+{# A weapon's Endgame badges, PvE above PvP, each where hard content clears the bar on that side; the badge leads with its side's activity icon. #}
+{% macro endgame_badges(w) %}
+{% if w.pve_endgame or w.pvp_endgame %}<span class="endgame">{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) if w[side ~ '_endgame'] %}<span class="cert {{ side }}" tabindex="0" data-tip="e-{{ side }}-{{ w.grid_id }}"><span class="cert-icon" aria-hidden="true"></span>{{ label }} Endgame</span>{% endfor %}</span>{% endif %}
+{% endmacro %}
+
+{# A sample of a pair line for the legend, in a colour or the heat scale's gradient (#heat-line, in grids.html.j2), dashed for a pair the copy can't make. #}
+{% macro line_sample(stroke, dashed=false) %}<svg class="links" width="34" height="12" aria-hidden="true"><path d="M2 10 C17 10 17 2 32 2" stroke-width="2.5" style="stroke:{{ stroke }}{% if dashed %};stroke-dasharray:6 5{% endif %}"></path></svg>{% endmacro %}
+
+{# The perk grids' legend: heat, wishlist rings, the copy's outline and the pair lines, with a copy shown (the weapons page) or without (Popular). #}
+{% macro legend(with_copy) %}
+<div class="legend2">
+<div><span class="lg-title">Perk heat</span><div class="heat-bar" aria-hidden="true"></div><div class="heat-ends"><span>rarely picked</span><span>favourite</span></div><span class="note">Share of the column's votes, against its most picked perk</span></div>
+<div><span class="lg-title">Wishlists</span>
+{% if with_copy %}
+<div class="lg-row"><i class="perk hit" aria-hidden="true"></i>In a wishlist roll this copy completes</div>
+<div class="lg-row"><i class="perk named" aria-hidden="true"></i>Named by a roll it doesn't complete</div>
+<div class="lg-row"><i class="row-swatch" aria-hidden="true"></i>This copy's perks</div>
+{% else %}
+<div class="lg-row"><i class="perk pick" aria-hidden="true"></i>Named by a wishlist roll</div>
+{% endif %}
+</div>
+<div><span class="lg-title">Trait pairs</span>
+{% if with_copy %}
+<div class="lg-row">{{ line_sample('url(#heat-line)') }}This copy's wanted and unwanted pairs, by how often players pick them</div>
+<div class="lg-row">{{ line_sample('var(--bad)') }}A pair a wishlist trashes</div>
+<div class="lg-row">{{ line_sample('var(--heat-hi)', true) }}Most picked pairs this copy can't make</div>
+{% else %}
+<div class="lg-row">{{ line_sample('url(#heat-line)') }}The three most picked pairs, by how often players pick them</div>
+{% endif %}
+<span class="note">Less picked pairs fade. Hover a trait for its partners, or click it to pin them.</span>
+</div>
+</div>
+{% endmacro %}

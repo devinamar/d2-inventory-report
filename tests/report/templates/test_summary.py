@@ -71,7 +71,7 @@ def test_the_purge_split_by_reason(conn, tmp_path):
 @pytest.mark.parametrize(
     'aegis, state, cell',
     [
-        ('fresh', 'All 5 up to date', '<span class="status">Up to date</span>'),
+        ('fresh', 'All 6 up to date', '<span class="status">Up to date</span>'),
         (
             'stale',
             '1 source has a problem',
@@ -84,7 +84,7 @@ def test_the_data_sources_panel_says_whether_every_source_is_up_to_date(
     conn, tmp_path, aegis, state, cell
 ):
     vault(conn)
-    for source in ('manifest', 'profile', 'dim', 'clarity'):
+    for source in ('manifest', 'profile', 'dim', 'clarity', 'perk_popularity'):
         source_status.save(conn, source, 'fresh')
     source_status.save(conn, 'aegis', aegis)
     page = summary_page(conn, tmp_path)

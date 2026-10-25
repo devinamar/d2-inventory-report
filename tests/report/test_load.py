@@ -403,4 +403,97 @@ def test_sources_say_how_each_fared(conn):
         ('Clarity', 0, 'Not checked'),
         ('Src', 0, 'Download failed: the last good copy is used'),
         ('The Aegis', 0, 'Not checked'),
+        ('d2-perk-popularity', 0, 'Not checked'),
     ]
+
+
+# Popular and the perk grids.
+
+
+def add_scored_guns(conn):
+    # Gun is scored on both sides (rank 2 on PvE, 1 on PvP, Endgame on PvE),
+    # Rifle on PvE only (rank 1, a fixed roll); the vault holds a copy of each
+    # of Gun's two versions.
+    c.add_weapon_def(conn, 100, name='Gun', ammoType=2)
+    c.add_weapon_def(conn, 101, name='Gun (Adept)', ammoType=2)
+    c.add_weapon_def(conn, 200, name='Rifle', ammoType=1)
+    columns = [
+        c.popularity_column('barrel', [('Fluted Barrel', 0.6), ('Hammer-Forged Rifling', 0.4)]),
+        c.popularity_column('traits', [('Rampage + Outlaw', 0.5), ('Kill Clip + Outlaw', 0.3)]),
+        c.popularity_column('trait1', [('Rampage', 0.7), ('Kill Clip', 0.3)]),
+        c.popularity_column('trait2', [('Outlaw', 1.0)]),
+    ]
+    c.add_popularity(conn, 'Gun', [100, 101], rank=2, hard_copies=60, columns=columns)
+    c.add_popularity(conn, 'Gun', [100, 101], side='pvp', rank=1, columns=columns[:2])
+    c.add_popularity(conn, 'Rifle', [200], rank=1)
+    c.add_copy(conn, 'a', 100)
+    c.add_copy(conn, 'b', 101)
+
+
+def test_popularity_lists_each_side_in_rank_order_with_its_looks_and_vault(conn):
+    # Gun's most picked perks are its barrel's, then its traits', by their
+    # plugs; both its versions' copies are in the vault.
+    add_scored_guns(conn)
+    assert rows(
+        conn,
+        load.POPULARITY,
+        'side',
+        'name',
+        'rank',
+        'ammo',
+        'slot',
+        'owned',
+        'pve_endgame',
+        'pvp_endgame',
+        'top_perks',
+    ) == [
+        ('pve', 'Rifle', 1, 'primary', 'Kinetic Weapons', 0, 0, 0, ''),
+        ('pve', 'Gun', 2, 'special', 'Kinetic Weapons', 2, 1, 0, '2002 1001 1003'),
+        ('pvp', 'Gun', 1, 'special', 'Kinetic Weapons', 2, 1, 0, '2002'),
+    ]
+
+
+def test_the_markdowns_columns_and_pairs_follow_populars_order(conn):
+    add_scored_guns(conn)
+    assert rows(conn, load.POPULAR_COLUMNS, 'side', 'name', 'col', 'top') == [
+        ('pve', 'Gun', 'barrel', 'Fluted Barrel'),
+        ('pve', 'Gun', 'traits', 'Rampage + Outlaw'),
+        ('pve', 'Gun', 'trait1', 'Rampage'),
+        ('pve', 'Gun', 'trait2', 'Outlaw'),
+        ('pvp', 'Gun', 'barrel', 'Fluted Barrel'),
+        ('pvp', 'Gun', 'traits', 'Rampage + Outlaw'),
+    ]
+    assert rows(conn, load.POPULAR_PAIRS, 'side', 'rank', 'trait1', 'trait2') == [
+        ('pve', 1, 'Rampage', 'Outlaw'),
+        ('pve', 2, 'Kill Clip', 'Outlaw'),
+        ('pvp', 1, 'Rampage', 'Outlaw'),
+        ('pvp', 2, 'Kill Clip', 'Outlaw'),
+    ]
+
+
+def test_a_grids_pairs_carry_both_sides_figures(conn):
+    # Each trait by its plug; Gun's grid is named after its lowest version.
+    add_scored_guns(conn)
+    assert rows(
+        conn, load.GRID_PAIRS, 'grid_id', 'a', 'b', 'pve_rank', 'pve_c1', 'pvp_rank', 'pvp_n2'
+    ) == [
+        (100, 1001, 1003, 1, 1.0, 1, 1),
+        (100, 1002, 1003, 2, 1.0, 2, 2),
+    ]
+
+
+def test_populars_filters_offer_the_scored_weapons_types_slots_and_ammo(conn):
+    add_scored_guns(conn)
+    assert rows(conn, load.POPULAR_OPTIONS, 'kind', 'value', 'label') == [
+        ('ammo', 'primary', 'Primary'),
+        ('ammo', 'special', 'Special'),
+        ('slot', 'Kinetic Weapons', 'Kinetic'),
+        ('type', 'Auto Rifle', 'Auto Rifle'),
+    ]
+
+
+def test_the_scores_date_is_the_files_and_their_source_has_no_link(conn):
+    # d2-perk-popularity's repo is private, so it has no link yet.
+    c.add_popularity_file(conn, [])
+    assert conn.execute(load.TOTALS).fetchone()['scores_at'] == '2026-10-25T15:23:40Z'
+    assert rows(conn, load.SOURCES, 'name', 'url')[-1] == ('d2-perk-popularity', '')

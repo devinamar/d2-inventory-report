@@ -8,7 +8,9 @@
 -- seen_votes in that column and none of its copies was seen with it: the
 -- manifest lists barrels and magazines that never drop on a weapon. col is the
 -- column's key (v_weapon_pool's), col_order its first socket and label what
--- the weapon calls it. Per side (pve_, pvp_): share and rank (the published
+-- the weapon calls it. lists gives the places (1 first, in wishlist_preference's
+-- order) of the wishlists whose rolls for the grid's versions name the perk,
+-- space-separated, '' for none. Per side (pve_, pvp_): share and rank (the published
 -- ones), rel (share against the column's top; 0 for an unvoted perk, NULL when
 -- the column has no scores on the side), heat (rel in tenths, 0 to 10), pos
 -- (the perk's place in its column: by share, then the game's order), and quiet
@@ -90,6 +92,21 @@ col AS (
     LEFT JOIN label l ON l.name = c.perk AND l.kind = c.col
     GROUP BY c.grid_id, c.col
 ),
+named AS (
+    SELECT grid_id, perk, replace(group_concat(DISTINCT place ORDER BY place), ',', ' ') AS lists
+    FROM (
+        SELECT v.grid_id, w.perk, w.place
+        FROM version v
+        JOIN v_wishlist_perk w ON w.item_hash = v.item_hash
+        WHERE NOT w.is_trash
+        UNION ALL
+        SELECT g.grid_id, w.perk, w.place
+        FROM grid g
+        JOIN v_wishlist_perk w ON w.item_hash = -69420
+        WHERE NOT w.is_trash
+    )
+    GROUP BY grid_id, perk
+),
 side (side) AS (
     VALUES ('pve'), ('pvp')
 ),
@@ -117,6 +134,7 @@ scored AS (
         ON t.side = s.side AND t.name = g.entry AND t.col = c.col AND t.perk = c.perk
 )
 SELECT c.grid_id, c.col, k.col_order, k.label, c.perk, c.position, c.own,
+       COALESCE(n.lists, '') AS lists,
        MAX(CASE WHEN r.side = 'pve' THEN r.share END) AS pve_share,
        MAX(CASE WHEN r.side = 'pve' THEN r.rank END) AS pve_rank,
        MAX(CASE WHEN r.side = 'pve' THEN r.rel END) AS pve_rel,
@@ -132,4 +150,5 @@ SELECT c.grid_id, c.col, k.col_order, k.label, c.perk, c.position, c.own,
 FROM cell c
 JOIN col k ON k.grid_id = c.grid_id AND k.col = c.col
 JOIN scored r ON r.grid_id = c.grid_id AND r.col = c.col AND r.perk = c.perk
+LEFT JOIN named n ON n.grid_id = c.grid_id AND n.perk = c.perk
 GROUP BY c.grid_id, c.col, c.perk;

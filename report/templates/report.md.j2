@@ -45,7 +45,7 @@
 | Source | What it gives | Status | Checked |
 |---|---|---|---|
 {% for s in sources %}
-| [{{ s.name }}]({{ s.url }}) | {{ s.gives }} | {{ s.status }} | {% if s.checked_at %}{{ s.checked_at|day }}{% endif %} |
+| {% if s.url %}[{{ s.name }}]({{ s.url }}){% else %}{{ s.name }}{% endif %} | {{ s.gives }} | {{ s.status }} | {% if s.checked_at %}{{ s.checked_at|day }}{% endif %} |
 {% endfor %}
 
 ## Weapons
@@ -119,6 +119,29 @@ Copies, best first:
 {% endfor %}
 
 {% endfor %}
+{% if popularity %}
+{% set sides = dict(popularity_sides|group('side')) %}
+{% set columns_by_weapon = dict(popular_columns|group('side', 'name')) %}
+{% set pairs_by_weapon = dict(popular_pairs|group('side', 'name')) %}
+## Popular
+
+**What this shows.** Every weapon d2-perk-popularity scores, PvE and PvP, in rank order: how many copies voted, how sure its scores are, whether hard content made it an Endgame pick, each perk column's most picked perk, and its three most picked trait pairs.
+
+**How it was derived.** d2-perk-popularity reads the post-game reports of finished activities and the perks on the weapons players used, one vote per copy, hard content counting for more; a family whose versions roll different trait pools is a weapon per pool, the pool in brackets after its name. A column's confidence comes from its effective votes (high from 100, medium from 30, low from 10, else very low), and a weapon's is its weakest column's. Endgame means at least {{ popularity_rule.endgame_copies }} of the weapon's copies on that side, and {{ (popularity_rule.endgame_share * 100)|round|int }}% of them, came from hard content: {{ sides.pve[0].hard }} for PvE; {{ sides.pvp[0].hard }} for PvP.{% if totals.scores_at %} Scores of {{ totals.scores_at|day }}.{% endif %}
+
+**Reading it.** Rank 1 is the side's most used weapon. A perk's share is of its column's votes, a pair's of all the weapon's pairs. Read low and very low confidence loosely: a few copies decide them. A fixed roll (most exotics) has no columns to pick from.
+
+{% for side, rows in popularity|group('side') %}
+### {{ sides[side][0].label }} ({{ '{:,}'.format(rows|length) }} weapons)
+
+| # | Weapon | Type | Copies | Confidence | Endgame | Most picked | Top pairs |
+|---:|---|---|---:|---|---|---|---|
+{% for w in rows %}
+| {{ w.rank }} | {{ w.name }} | {{ w.type }} | {{ '{:,}'.format(w.players) }} | {{ w.confidence or '—' }} | {% if w.endgame %}yes{% endif %} | {% for c in columns_by_weapon.get((side, w.name), []) if c.col != 'traits' %}{{ c.label }} {{ c.top }} {{ c.top_share|pct }}{% if not loop.last %} · {% endif %}{% endfor %} | {% for p in pairs_by_weapon.get((side, w.name), []) %}{{ p.trait1 }} + {{ p.trait2 }} {{ p.share|pct }}{% if not loop.last %} · {% endif %}{% endfor %} |
+{% endfor %}
+
+{% endfor %}
+{% endif %}
 ## Armor sets
 
 **What this shows.** Each class's Legendary armor sets, with every Armor 3.0 piece by slot in score order, and which to purge; then the legacy pieces, from before Armor 3.0.

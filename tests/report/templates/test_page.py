@@ -2,7 +2,7 @@
 # section for each page.
 from tests import conftest as c
 
-PAGES = ('summary', 'weapons', 'armor', 'builds', 'exotics', 'preferences')
+PAGES = ('summary', 'weapons', 'popular', 'armor', 'builds', 'exotics', 'preferences')
 
 
 def test_every_page_has_its_tab_and_its_section(conn, tmp_path):
