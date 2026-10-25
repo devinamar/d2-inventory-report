@@ -1,9 +1,10 @@
 # Tests for the perk popularity step (extract/perk_popularity.py): the scores
 # file lands in perk_popularity_weapon and perk_popularity_file, a new file
 # replaces the stored one, and a failed download keeps the stored copy and its
-# note. The sample is trimmed from the scores of 2026-10-23: Found Verdict's PvP
-# magazine, the origin column of Reckless Endangerment, which no hard-content
-# copy voted in, and The Jade Rabbit, a fixed roll with no columns.
+# note. The sample is trimmed from the scores of 2026-10-25: the PvP magazine of
+# Found Verdict (Episode: Heresy), one of two weapons its trait pools split it
+# into; the origin column of Reckless Endangerment (Witch Queen), which no
+# hard-content copy voted in; and The Jade Rabbit, a fixed roll with no columns.
 import json
 
 import pytest
@@ -11,59 +12,63 @@ import requests
 
 from extract import perk_popularity, source_status
 
-GENERATED_AT = '2026-10-23T23:51:33Z'
+GENERATED_AT = '2026-10-25T15:18:40Z'
 FOUND_VERDICT = {
-    'name': 'Found Verdict',
+    'name': 'Found Verdict (Episode: Heresy)',
     'type': 'Shotgun',
     'item_hash': 694500607,
-    'rank': 45,
-    'players': 189,
-    'active_players': 189,
+    'rank': 48,
+    'players': 157,
+    'active_players': 157,
+    'family': 'Found Verdict',
+    'item_hashes': [694500607, 851296754],
     'hard': True,
     'hard_weight': 0.699,
-    'groups': {'hard': {'copies': 53, 'n_eff': 52.5}, 'normal': {'copies': 140, 'n_eff': 136.8}},
+    'groups': {'hard': {'copies': 47, 'n_eff': 46.5}, 'normal': {'copies': 113, 'n_eff': 109.9}},
     'last_seen': '2026-10-23T22:13:09Z',
     'stale': False,
     'columns': [
         {
             'kind': 'magazine',
-            'n_eff': 100.2,
-            'credibility': 0.77,
-            'confidence': 'high',
-            'hard': {'n_eff': 52.5, 'credibility': 0.64},
-            'normal': {'n_eff': 136.8, 'credibility': 0.82},
+            'n_eff': 88.3,
+            'credibility': 0.75,
+            'confidence': 'medium',
+            'hard': {'n_eff': 46.5, 'credibility': 0.61},
+            'normal': {'n_eff': 109.9, 'credibility': 0.79},
             'perks': [
                 {
                     'perk': 'Accurized Rounds',
-                    'share': 0.762,
-                    'low': 0.67,
-                    'high': 0.835,
-                    'hard': 0.798,
-                    'normal': 0.678,
+                    'share': 0.786,
+                    'low': 0.69,
+                    'high': 0.859,
+                    'hard': 0.815,
+                    'normal': 0.718,
                 },
                 {
                     'perk': 'Assault Mag',
-                    'share': 0.094,
-                    'low': 0.051,
-                    'high': 0.167,
-                    'hard': 0.077,
-                    'normal': 0.135,
+                    'share': 0.082,
+                    'low': 0.041,
+                    'high': 0.159,
+                    'hard': 0.065,
+                    'normal': 0.122,
                 },
             ],
         }
     ],
 }
 RECKLESS_ENDANGERMENT = {
-    'name': 'Reckless Endangerment',
+    'name': 'Reckless Endangerment (Witch Queen)',
     'type': 'Shotgun',
-    'item_hash': 3085559077,
-    'rank': 361,
-    'players': 38,
-    'active_players': 38,
+    'item_hash': 3216652511,
+    'rank': 737,
+    'players': 6,
+    'active_players': 6,
+    'family': 'Reckless Endangerment',
+    'item_hashes': [3216652511],
     'hard': False,
-    'hard_weight': 0.224,
-    'groups': {'hard': {'copies': 2, 'n_eff': 1.5}, 'normal': {'copies': 36, 'n_eff': 28.4}},
-    'last_seen': '2026-10-23T21:43:30Z',
+    'hard_weight': 0.0,
+    'groups': {'hard': {'copies': 0, 'n_eff': 0.0}, 'normal': {'copies': 6, 'n_eff': 4.8}},
+    'last_seen': '2026-10-23T20:22:26Z',
     'stale': False,
     'columns': [
         {
@@ -93,6 +98,8 @@ JADE_RABBIT = {
     'rank': 7,
     'players': 1188,
     'active_players': 1188,
+    'family': 'The Jade Rabbit',
+    'item_hashes': [3844694310],
     'hard': True,
     'hard_weight': 0.727,
     'groups': {
@@ -146,19 +153,21 @@ def test_a_downloaded_file_lands_in_the_tables(conn, monkeypatch):
         "SELECT side, name, rank, hard, stale, groups ->> '$.hard.copies', "
         "json_array_length(columns) FROM perk_popularity_weapon ORDER BY side, rank",
     ) == [
-        ('pve', 'Reckless Endangerment', 361, 0, 0, 2, 1),
+        ('pve', 'Reckless Endangerment (Witch Queen)', 737, 0, 0, 0, 1),
         ('pvp', 'The Jade Rabbit', 7, 1, 0, 188, 0),
-        ('pvp', 'Found Verdict', 45, 1, 0, 53, 1),
+        ('pvp', 'Found Verdict (Episode: Heresy)', 48, 1, 0, 47, 1),
     ]
-    found_verdict = conn.execute(
-        "SELECT columns FROM perk_popularity_weapon WHERE name = 'Found Verdict'"
-    ).fetchone()[0]
-    assert json.loads(found_verdict) == FOUND_VERDICT['columns']
+    family, item_hashes, columns = conn.execute(
+        "SELECT family, item_hashes, columns FROM perk_popularity_weapon "
+        "WHERE name = 'Found Verdict (Episode: Heresy)'"
+    ).fetchone()
+    assert (family, json.loads(item_hashes)) == ('Found Verdict', [694500607, 851296754])
+    assert json.loads(columns) == FOUND_VERDICT['columns']
     assert rows(
         conn,
         "SELECT columns ->> '$[0].kind', columns ->> '$[0].hard', "
         "columns ->> '$[0].perks[0].perk', columns ->> '$[0].perks[0].hard' "
-        "FROM perk_popularity_weapon WHERE name = 'Reckless Endangerment'",
+        "FROM perk_popularity_weapon WHERE family = 'Reckless Endangerment'",
     ) == [('origin', None, "Vanguard's Vindication", None)]
     file = conn.execute("SELECT * FROM perk_popularity_file").fetchall()
     assert [(r[0], json.loads(r[1]), json.loads(r[2])) for r in file] == [

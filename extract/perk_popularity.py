@@ -19,8 +19,10 @@ def save(conn, scores: dict) -> None:
         (
             side,
             w['name'],
+            w['family'],
             w['type'],
             w['item_hash'],
+            json.dumps(w['item_hashes']),
             w['rank'],
             w['players'],
             w['active_players'],
@@ -38,7 +40,7 @@ def save(conn, scores: dict) -> None:
         conn.execute("DELETE FROM perk_popularity_weapon")
         conn.execute("DELETE FROM perk_popularity_file")
         conn.executemany(
-            "INSERT INTO perk_popularity_weapon VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO perk_popularity_weapon VALUES ({', '.join('?' * 15)})",
             weapons,
         )
         conn.execute(
