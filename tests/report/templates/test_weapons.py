@@ -1,29 +1,35 @@
 # Tests for the report's Weapons page (report/templates/weapons.html.j2): Roll
-# Quality's sections, family cards and switches, the wishlists' colours, the
-# perks' icons, and each weapon's RPM, season, drop source, kills and trash.
+# Quality's sections, its cards (one per scored weapon, else per family) with
+# their headers, switches and pickers, and each copy's entry: its places and
+# scores per side, wishlists, trash, RPM, season, drop source and kills.
 from sources.bungie import api_mappings
 from tests import conftest as c
 
 RPM = next(h for h, key in api_mappings.STAT_KEYS.items() if key == 'rpm')
 
 
-def rifle_copies(conn, reusable=None, has_wishlist=0):
-    # Two copies of the Test Rifle (100), with their weapon_result rows.
+def rifle_copies(conn, perks=(c.TRAIT_PERK_A, c.TRAIT_PERK_A), match_count=0):
+    # Copies of the Test Rifle (100), w1, w2, ..., one per trait perk, with
+    # their weapon_result rows.
     c.add_weapon_def(conn, 100, sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
-    for instance_id in ('w1', 'w2'):
-        c.add_copy(
-            conn,
-            instance_id,
-            100,
-            [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A],
-            reusable,
-            gear_tier=5,
-        )
+    for n, perk in enumerate(perks, 1):
+        c.add_copy(conn, f'w{n}', 100, [c.INTRINSIC_ADAPTIVE, perk], gear_tier=5)
         with conn:
             conn.execute(
-                "INSERT INTO weapon_result VALUES (?, ?, ?)",
-                (instance_id, has_wishlist, has_wishlist),
+                "INSERT INTO weapon_result VALUES (?, ?, ?)", (f'w{n}', match_count, match_count)
             )
+
+
+def score_rifle(conn, **kwargs):
+    # d2-perk-popularity scores the Test Rifle on PvE: Kill Clip on 70% of its
+    # trait column's votes, Rampage on 30% (medium confidence).
+    c.add_popularity(
+        conn,
+        'Test Rifle',
+        [100],
+        columns=[c.popularity_column('trait1', [('Kill Clip', 0.7), ('Rampage', 0.3)])],
+        **kwargs,
+    )
 
 
 def add_my_list(conn, url='https://example.com/w/mine.txt'):
@@ -32,78 +38,169 @@ def add_my_list(conn, url='https://example.com/w/mine.txt'):
         conn.execute("INSERT INTO wishlist_preference VALUES ('mine', 'Mine', ?)", (url,))
 
 
+def add_roll(conn, roll_id, source_key, perk, is_trash=0):
+    # A roll of source_key's for the Test Rifle naming perk (none for a roll
+    # naming no perks), its source stored first.
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO wishlist_source (key, label, url) VALUES (?, ?, '')",
+            (source_key, source_key),
+        )
+        conn.execute(
+            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, perk1, is_trash) "
+            "VALUES (?, ?, 100, ?, ?)",
+            (roll_id, source_key, perk, is_trash),
+        )
+
+
 def weapons_page(conn, folder):
     html, _ = c.write_report(conn, folder)
     return c.report_page(html, 'weapons')
 
 
-def test_roll_quality_groups_the_families_by_slot_and_weapon_type(conn, tmp_path):
-    # Each section counts its families and opens them all by the double
-    # chevron leading it; a family card, closed at first, opens by its name.
+def entry(page, k):
+    # Copy k's picker entry.
+    return page.split(f'<div class="pr" data-k="{k}"')[1].split('</button>\n<button')[0]
+
+
+def test_roll_quality_groups_the_cards_by_slot_and_weapon_type(conn, tmp_path):
+    # Each section counts its cards and opens them all by the double chevron
+    # leading it; a card, closed at first, opens by its name on its picker and
+    # the grid it clones (data-g). The Popularity switch leads the page's.
     rifle_copies(conn)
     page = weapons_page(conn, tmp_path)
     assert '<h3>Kinetic <span class="num count">1</span></h3></summary>' in page
     assert '<summary><button type="button" class="expand" aria-expanded="false"' in page
-    assert 'aria-controls="fam-w1"' in page and 'id="fam-w1" hidden' in page
-    assert 'Test Rifle' in page and '<span class="copy-count">2 copies</span>' in page
+    assert 'aria-controls="fam-100"' in page and 'id="fam-100" hidden' in page
+    assert '<div class="picker" role="radiogroup" aria-label="Test Rifle copies">' in page
+    assert '<div class="rp-main" data-g="100"></div>' in page
+    assert '<span class="copy-count">2 copies</span>' in page
     assert 'href="https://www.light.gg/db/items/100/"' in page
-    assert 'data-q="w1" title="Copy id w1">w1</button>' in page
+    assert '<div class="switch side" role="group" aria-label="Popularity">' in page
+
+
+def test_a_family_whose_versions_roll_different_pools_is_a_card_per_pool(conn, tmp_path):
+    # Gun (Pantheon) is the scored weapon for version 100; version 101, which
+    # no scored weapon lists, makes a card of the family. Each card's title is
+    # the family's, the pool on its own line.
+    c.add_weapon_def(conn, 100, name='Gun')
+    c.add_weapon_def(conn, 101, name='Gun')
+    c.add_popularity(conn, 'Gun (Pantheon)', [100], family='Gun')
+    for instance_id, item_hash in (('a', 100), ('b', 101)):
+        c.add_copy(conn, instance_id, item_hash)
+        with conn:
+            conn.execute("INSERT INTO weapon_result VALUES (?, 0, 0)", (instance_id,))
+    page = weapons_page(conn, tmp_path)
+    assert 'aria-label="Gun (Pantheon)">' in page and 'aria-label="Gun">' in page
+    assert '<span class="fam-title">Gun</span><span class="fam-pool">(Pantheon)</span>' in page
+    assert page.count('<span class="copy-count">1 copy</span>') == 2
+
+
+def test_a_cards_header_gives_each_sides_rank_confidence_and_endgame(conn, tmp_path):
+    # Scored on PvE only: its rank on the PvE button, a dash on PvP's; the
+    # PvE chip in medium's heat, PvP's saying it has no scores; the Endgame
+    # badge (60 of its 100 copies from hard content) under its name.
+    rifle_copies(conn)
+    score_rifle(conn, rank=3, hard_copies=60)
+    page = weapons_page(conn, tmp_path)
+    assert (
+        '<button type="button" class="side-pve" data-value="pve" aria-pressed="true">'
+        'PvE <span class="num">#3</span></button>'
+    ) in page
+    assert 'aria-pressed="false">PvP <span class="num">—</span></button>' in page
+    assert (
+        '<span class="pop-chip heat-mid on-pve" tabindex="0" data-tip="c-pve-100">'
+        'Medium confidence</span>'
+    ) in page
+    assert '<span class="pop-chip on-pvp">No PvP scores</span>' in page
+    assert '</h5>\n<span class="endgame"><span class="cert pve" tabindex="0"' in page
+
+
+def test_the_picker_gives_each_copy_its_place_and_score_on_each_side(conn, tmp_path):
+    # w2's Kill Clip is the trait column's favourite (100%, full heat), w1's
+    # Rampage 30% against its 70% (43%): w2 leads PvE. PvP has no scores, so
+    # no percentage, and the copies keep their instance order there.
+    rifle_copies(conn, perks=(c.TRAIT_PERK_A, c.TRAIT_PERK_B))
+    score_rifle(conn)
+    page = weapons_page(conn, tmp_path)
+    assert page.index('<div class="pr" data-k="2" data-r="1 2">') < page.index(
+        '<div class="pr" data-k="1" data-r="2 1">'
+    )
+    assert (
+        '<span class="copy-n on-pve keep">#1</span><span class="pr-pop on-pve c10">100%</span>'
+        '<span class="copy-n on-pvp">#2</span><span class="pr-id">w2</span>'
+    ) in entry(page, 2)
+    assert (
+        '<span class="copy-n on-pve">#2</span><span class="pr-pop on-pve c4">43%</span>'
+        '<span class="copy-n on-pvp keep">#1</span><span class="pr-id">w1</span>'
+    ) in entry(page, 1)
+    assert '<button type="button" class="copy-btn" data-q="w1" title="Copy id w1"' in page
+
+
+def test_a_copys_entry_names_the_lists_it_matches_as_the_wishlist_switch_shows(conn, tmp_path):
+    # Voltron (the first list) has a Rampage roll, which w1 completes; Mine has
+    # a Kill Clip roll, which no copy does. Each line answers the lists it
+    # holds for: w1's Voltron under All lists and Voltron, its No wishlist
+    # match under Mine, and Missing wishlist entries under the Aegis lists.
+    rifle_copies(conn, perks=(c.TRAIT_PERK_A, c.TRAIT_PERK_C), match_count=1)
+    add_my_list(conn)
+    add_roll(conn, 1, 'voltron', c.TRAIT_PERK_A)
+    add_roll(conn, 2, 'mine', c.TRAIT_PERK_B)
+    with conn:
+        conn.execute("INSERT INTO instance_wishlist_match VALUES ('w1', 1)")
+    page = weapons_page(conn, tmp_path)
+    w1, w2 = entry(page, 1), entry(page, 2)
+    assert (
+        '<span data-wl="* voltron"><i class="wl-dot l1" aria-hidden="true"></i>'
+        'Voltron (Pandapaxxy/Mercules +trash)</span>'
+    ) in w1
+    assert '<span class="none" data-wl="mine" hidden>No wishlist match</span>' in w1
+    assert '<span class="none" data-wl="* voltron mine">No wishlist match</span>' in w2
+    assert (
+        '<span class="none" data-wl="aegis_endgame aegis_shopping" hidden>'
+        'Missing wishlist entries</span>'
+    ) in w1
+    assert (
+        '<article class="card fam" data-side="pve" data-wpn="all dupes listed-* listed-voltron '
+        'listed-mine">'
+    ) in page
+    assert '<i class="wl-dot l4" aria-hidden="true"></i>Mine</button>' in page
 
 
 def test_a_weapon_no_list_covers_says_so(conn, tmp_path):
-    # Dupes shows the rifle, Has wishlist doesn't; its All lists table says
-    # it's missing entries, and each list's button shows the note in its place.
+    # Dupes shows the rifle, Has wishlist doesn't; each copy is missing
+    # entries in every view.
     rifle_copies(conn)
-    add_my_list(conn)
     page = weapons_page(conn, tmp_path)
-    assert '<article class="card fam" data-wpn="all dupes">' in page
+    assert '<article class="card fam" data-side="pve" data-wpn="all dupes">' in page
     assert (
-        '<button type="button" data-value="listed" aria-pressed="false">Has wishlist</button>'
-    ) in page
-    assert '<button type="button" data-value="*" aria-pressed="true">All lists</button>' in page
-    assert '<td colspan="3">Missing wishlist entries.</td>' in page
-    assert 'data-wl="voltron aegis_endgame aegis_shopping mine" hidden>' in page
+        '<span class="none" data-wl="* voltron aegis_endgame aegis_shopping">'
+        'Missing wishlist entries</span>'
+    ) in entry(page, 1)
 
 
-def test_each_list_wears_its_colour(conn, tmp_path):
-    # The fourth list's button and rings take the fourth colour.
+def test_a_copy_a_list_trashes_says_so(conn, tmp_path):
+    # Like Voltron's 50 lines trashing a whole weapon (item=-<hash>), which
+    # fit every copy; none names a weapon in the live vault today. All lists
+    # names every list trashing it, the list's own view just it.
     rifle_copies(conn)
-    add_my_list(conn)
-    page = weapons_page(conn, tmp_path)
-    assert '<i class="wl-dot l4" aria-hidden="true"></i>Mine</button>' in page
-    assert '.l4 { --tint: var(--wl4);' in page
-
-
-def test_a_perk_shows_its_icon_named_in_its_alt_text_and_tooltip(conn, tmp_path):
-    rifle_copies(conn)
-    page = weapons_page(conn, tmp_path)
-    assert 'alt="Rampage"' in page and '<b>Rampage</b>' in page
-
-
-def test_roll_quality_cards_name_the_lists_with_rolls_for_them(conn, tmp_path):
-    # A rifle the player's own list has a roll for: Has wishlist shows its card
-    # under All lists and under that list, not under the default lists.
-    rifle_copies(conn, reusable={1: [c.TRAIT_PERK_A]}, has_wishlist=1)
-    add_my_list(conn, url='')
+    add_roll(conn, 1, 'voltron', None, is_trash=1)
     with conn:
-        conn.execute("INSERT INTO wishlist_source (key, label, url) VALUES ('mine', 'Mine', '')")
-        conn.execute(
-            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, perk1) "
-            "VALUES (1, 'mine', 100, ?)",
-            (c.TRAIT_PERK_A,),
-        )
+        conn.executemany("INSERT INTO instance_wishlist_match VALUES (?, 1)", [('w1',), ('w2',)])
     page = weapons_page(conn, tmp_path)
-    assert '<article class="card fam" data-wpn="all dupes listed-* listed-mine">' in page
+    label = 'Voltron (Pandapaxxy/Mercules +trash)'
+    assert page.count(f'<span class="trash" data-wl="*">Trash in {label}</span>') == 2
+    assert page.count(f'<span class="trash" data-wl="voltron" hidden>Trash in {label}</span>') == 2
 
 
-def test_a_family_shows_its_rpm_season_and_source_or_each_copys_when_they_differ(conn, tmp_path):
+def test_a_card_shows_its_rpm_season_and_source_or_each_copys_when_they_differ(conn, tmp_path):
     # The Test Rifle's copies are Monument of Triumph drops (v970.core, as 151
     # of the live vault's copies are) from the Exotic Archive, at 140 RPM, so
     # its card names them once: the season and source under its name, the RPM
-    # under its element and frame. A Sudden Death's
-    # copies are an Episode: Heresy drop and a Lawless reissue (its own item
-    # hash), here at different RPM too, as Hawthorne's Field-Forged Shotgun's
-    # are (80 and 95): each copy names its own.
+    # under its element and frame. A Sudden Death's copies are an Episode:
+    # Heresy drop and a Lawless reissue (its own item hash), here at different
+    # RPM too, as Hawthorne's Field-Forged Shotgun's are (80 and 95): each
+    # copy names its own.
     with conn:
         conn.execute(
             "INSERT INTO DestinyCollectibleDefinition VALUES (9, ?)",
@@ -127,26 +224,10 @@ def test_a_family_shows_its_rpm_season_and_source_or_each_copys_when_they_differ
     for text in (
         'RPM: 140',
         'S28 Monument of Triumph',
-        '<span>RPM: 80</span>',
+        '<span class="rpm">RPM: 80</span>',
         'S26 Episode: Heresy',
     ):
         assert page.count(text) == 1
-
-
-def test_a_copy_a_list_trashes_says_so(conn, tmp_path):
-    # Like Voltron's 50 lines trashing a whole weapon (item=-<hash>), which
-    # fit every copy; none names a weapon in the live vault today.
-    rifle_copies(conn)
-    with conn:
-        conn.execute("INSERT INTO wishlist_source (key, label, url) VALUES ('voltron', 'V', '')")
-        conn.execute(
-            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, is_trash) "
-            "VALUES (1, 'voltron', 100, 1)"
-        )
-        conn.executemany("INSERT INTO instance_wishlist_match VALUES (?, 1)", [('w1',), ('w2',)])
-    page = weapons_page(conn, tmp_path)
-    label = 'Voltron (Pandapaxxy/Mercules +trash)'
-    assert page.count(f'<span class="trash">Trash in {label}</span>') == 2
 
 
 def test_each_copy_shows_its_plugged_trackers_kills_as_dim_does(conn, tmp_path):
@@ -178,7 +259,7 @@ def test_each_copy_shows_its_plugged_trackers_kills_as_dim_does(conn, tmp_path):
     assert page.count('<span class="kill"') == 2
 
 
-def test_a_family_names_its_ammo_by_its_name_and_its_element_then_frame(conn, tmp_path):
+def test_a_card_names_its_ammo_by_its_name_and_its_element_then_frame(conn, tmp_path):
     # Luna's Howl's header: its primary ammo badge right after its name; Solar,
     # then Precision Frame with its icon, stacked beside it.
     c.add_weapon_def(conn, 100, ammoType=1, sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
@@ -199,10 +280,9 @@ def test_a_family_names_its_ammo_by_its_name_and_its_element_then_frame(conn, tm
     ) in page
 
 
-def test_a_familys_table_sorts_by_score_and_element(conn, tmp_path):
-    # Score is the active sort at first; Element, a column only when copies
-    # differ in element, as Ergo Sum's do, sorts too. Each copy row carries
-    # what report.js sorts it by.
+def test_copies_that_differ_in_element_each_name_theirs(conn, tmp_path):
+    # Ergo Sum's copies roll different elements: the header leaves it out and
+    # each copy's entry names its own.
     c.add_weapon_def(conn, 100, sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
     for instance_id, element in (('w1', 3), ('w2', 2)):
         c.add_copy(
@@ -211,13 +291,5 @@ def test_a_familys_table_sorts_by_score_and_element(conn, tmp_path):
         with conn:
             conn.execute("INSERT INTO weapon_result VALUES (?, 0, 0)", (instance_id,))
     page = weapons_page(conn, tmp_path)
-    assert (
-        '<th scope="col" aria-sort="descending"><button type="button" class="sort on" '
-        'data-sort="score" title="Sort by score">Score<svg'
-    ) in page
-    assert (
-        '<th scope="col" aria-sort="none"><button type="button" class="sort" '
-        'data-sort="element" title="Sort by element">Element<svg'
-    ) in page
-    assert '<tr data-n="1" data-id="w1" data-element="Solar" data-score="-1">' in page
-    assert '<tr data-n="2" data-id="w2" data-element="Arc" data-score="-1">' in page
+    assert '<span class="fam-stats">\n<span class="frame">' in page
+    assert '>Solar</span>' in entry(page, 1) and '>Arc</span>' in entry(page, 2)

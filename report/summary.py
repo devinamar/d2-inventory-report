@@ -13,7 +13,7 @@ def summary_counts(conn) -> dict:
         return conn.execute(sql).fetchone()[0]
 
     return {
-        'families': totals['families'],
+        'to_review': totals['to_review'],
         'covered': count("SELECT COUNT(*) FROM weapon_result WHERE has_wishlist = 1"),
         'true_duplicates': totals['true_duplicates'],
         'sets': count("SELECT COUNT(DISTINCT set_name) FROM v_armor WHERE set_hash IS NOT NULL"),
@@ -50,8 +50,8 @@ def print_summary(conn) -> None:
 
     counts = {**summary_counts(conn), **dim_summary(conn)}
     print("Summary:")
-    if counts['families']:
-        weapons = plural(counts['families'], 'weapon', 'weapons')
+    if counts['to_review']:
+        weapons = plural(counts['to_review'], 'weapon', 'weapons')
         print(f"  - {weapons} to review: more than one copy each")
     if counts['covered']:
         copies = plural(counts['covered'], 'weapon copy', 'weapon copies')

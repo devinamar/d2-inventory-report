@@ -1,6 +1,7 @@
 # Tests for the perk grids (report/templates/grids.html.j2): one template per
-# grid with its rows' heat, places, shares and wishlists per side, its pair
-# lines and details lines, then the tooltip blocks and the icon and ring rules.
+# grid with its rows' heat, places, shares, wishlists and copies per side, its
+# pair lines with their verdicts and copies, and details lines, then the
+# tooltip blocks and the icon and ring rules.
 from tests import conftest as c
 
 
@@ -41,12 +42,17 @@ def grids(conn, folder):
     return html.split('</main>')[1]
 
 
+def gun_grid(conn, folder):
+    # Gun's grid template.
+    return grids(conn, folder).split('<template id="g100">')[1].split('</template>')[0]
+
+
 def test_a_grids_rows_carry_both_sides_heat_places_shares_and_lists(conn, tmp_path):
     # PvP has no scores: no heat or share there, the game's order, and its
-    # traits recede. Firefly is only the copy's.
+    # traits recede. The copy (1 on its card) has Rampage, and Firefly, which
+    # only it has.
     add_gun(conn)
-    html = grids(conn, tmp_path)
-    template = html.split('<template id="g100">')[1].split('</template>')[0]
+    template = gun_grid(conn, tmp_path)
     assert '<div class="pc" data-col="trait1">' in template
     assert '<span class="conf on-pvp">no scores</span>' in template
     assert (
@@ -54,20 +60,52 @@ def test_a_grids_rows_carry_both_sides_heat_places_shares_and_lists(conn, tmp_pa
         '<span>Kill Clip</span></li>'
     ) in template
     assert (
-        '<li class="pk a4 bn qb" data-tip="p1001" data-r="2 1" data-a="30%">'
+        '<li class="pk a4 bn qb" data-tip="p1001" data-r="2 1" data-a="30%" data-o="1">'
         '<span>Rampage</span></li>'
     ) in template
-    assert 'class="pk a0 bn qa qb own" data-tip="p1005"' in template
+    assert (
+        'class="pk a0 bn qa qb own" data-tip="p1005" data-r="3 3" data-a="—" data-o="1">'
+    ) in template
 
 
 def test_a_grid_holds_its_pairs_lines_and_each_scored_sides_details(conn, tmp_path):
+    # Kill Clip + Outlaw, the top pair, is desired; Rampage + Firefly, which
+    # the copy makes and players weren't seen with, is undesirable on PvE,
+    # where the pairs' confidence is high. PvP has no pair scores.
     add_gun(conn)
-    template = grids(conn, tmp_path).split('<template id="g100">')[1].split('</template>')[0]
+    template = gun_grid(conn, tmp_path)
     assert (
-        '<path data-a="p1002" data-b="p1003" data-pve="1 1.0 0.7 1.0 1.0 1 1"></path>' in template
-    )
+        '<path data-a="p1002" data-b="p1003" data-pve="1 1.0 0.7 1.0 1.0 1 1 g"></path>'
+    ) in template
+    assert (
+        '<path data-a="p1001" data-b="p1005" data-pve="0 0 0 0 0 0 0 b" data-c="1"></path>'
+    ) in template
     assert '<p class="pop-meta on-pve"><span><b>Confidence:</b> High in every column' in template
     assert 'on-pvp"><span><b>Confidence' not in template
+
+
+def test_a_copys_completed_roll_marks_its_perks_and_its_pair(conn, tmp_path):
+    # The copy completes Mine's roll naming Rampage and Firefly (Mine is the
+    # fourth list): both rows name it as the copy's hit, and the pair line
+    # names the list; a trash roll of Voltron's naming them marks it too.
+    add_gun(conn)
+    with conn:
+        conn.execute("INSERT INTO wishlist_preference VALUES ('mine', 'Mine', '')")
+        conn.execute("INSERT INTO wishlist_source (key, label, url) VALUES ('mine', 'Mine', '')")
+        conn.executemany(
+            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, perk1, perk2, is_trash) "
+            "VALUES (?, ?, 100, ?, ?, ?)",
+            [
+                (2, 'mine', c.TRAIT_PERK_A, c.TRAIT_PERK_E, 0),
+                (3, 'voltron', c.TRAIT_PERK_A, c.TRAIT_PERK_E, 1),
+            ],
+        )
+        conn.execute("INSERT INTO instance_wishlist_match VALUES ('a', 2)")
+    template = gun_grid(conn, tmp_path)
+    assert (
+        'data-tip="p1001" data-r="2 1" data-a="30%" data-l="4" data-o="1" data-h="1:4">'
+    ) in template
+    assert 'data-c="1" data-w="4" data-t="1"></path>' in template
 
 
 def test_tooltips_cover_the_perks_and_each_scored_weapons_confidence_and_badge(conn, tmp_path):

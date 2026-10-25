@@ -56,7 +56,7 @@
 <span class="top-roll"><span class="label">Most picked</span>{% for h in w.top_perks.split() %}<i class="tp" data-tip="p{{ h }}"></i>{% endfor %}</span>
 {% endif %}
 </div>
-<div class="pop-facts">{{ m.confidence_chip(w) }}</div>
+<div class="pop-facts">{{ m.confidence_chip(w.confidence, w.side, w.grid_id) }}</div>
 </header>
 <div class="pop-body" id="pv-{{ side }}-{{ w.grid_id }}" data-g="{{ w.grid_id }}" hidden></div>
 </article>

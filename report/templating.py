@@ -88,10 +88,13 @@ def ring_sets(n: int) -> list:
     # '1-3', ...): a grid's ring can take any of them.
     places = range(1, n + 1)
     return [
-        '-'.join(map(str, chosen))
-        for k in places
-        for chosen in itertools.combinations(places, k)
+        '-'.join(map(str, chosen)) for k in places for chosen in itertools.combinations(places, k)
     ]
+
+
+def naming(values: str, item) -> bool:
+    # Whether a space-separated list (a grid row's owners) names item.
+    return str(item) in values.split()
 
 
 ENV = jinja2.Environment(
@@ -109,6 +112,7 @@ ENV.filters.update(
     pct=pct,
     ring_rule=ring_rule,
 )
+ENV.tests.update(naming=naming)
 ENV.globals.update(
     ring_sets=ring_sets,
     stat_short=models.ARMOR_STAT_SHORT_MAP,

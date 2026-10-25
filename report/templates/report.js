@@ -1,8 +1,8 @@
 // The report's behaviour: page tabs by URL hash, class, weapon, side and
-// wishlist switches, sorting a weapon family's copies, opening weapon
-// families, armor sets and Popular's weapons (one by one, or a group at a
-// time by its double chevron), the perk grids they open, Popular's filters,
-// tooltips and copying DIM queries and ids.
+// wishlist switches, opening weapon cards, armor sets and Popular's weapons
+// (one by one, or a group at a time by its double chevron), the perk grids
+// they open and the copy a weapon card shows, Popular's filters, tooltips and
+// copying DIM queries and ids.
 
 // Tabs: show the page the hash names (#weapons shows #page-weapons), the
 // Summary when it names none. Page ids differ from the hashes so the browser
@@ -28,7 +28,7 @@ addEventListener('hashchange', route);
 route();
 
 // A side's scope: the closest element that names a side (a Popular list, a
-// weapons card), PvE outside one.
+// weapon card), PvE outside one.
 function sideOf(el) {
     const scope = el.closest('[data-side]');
     if (scope) {
@@ -64,11 +64,12 @@ function heat(rel) {
 
 // Tooltips: one fixed element filled from the hovered or focused element's
 // tip-<id> block (a perk's by its plug, a weapon's confidence or Endgame badge
-// per side), and for an old Roll Quality wishlist pick the lists naming it. A
-// grid row's adds its rank on the side shown, the shown lists naming it and,
-// while a trait is focused, its pair with that trait. It sits above its
-// element when it fits, else below; a trait's sits beside its column (left of
-// Trait 1, right of Trait 2), clear of the pair lines between them.
+// per side, a Preferences badge's set or exotic). A grid row's adds its rank
+// on the side shown, the shown lists naming it (or with a roll the copy shown
+// completes) and, while a trait is focused, its pair with that trait. It sits
+// above its element when it fits, else below; a trait's sits beside its
+// column (left of Trait 1, right of Trait 2), clear of the pair lines between
+// them.
 const tip = document.getElementById('tip');
 const SIDE_LABELS = { pve: 'PvE', pvp: 'PvP' };
 
@@ -128,11 +129,6 @@ function showTip(e) {
     tip.innerHTML = source.innerHTML;
     if (perk.matches('.pk, .tp')) {
         gridTip(perk);
-    } else if (perk.dataset.named) {
-        const named = document.createElement('p');
-        named.className = 'named';
-        named.textContent = 'Named by ' + perk.dataset.named;
-        tip.append(named);
     }
     tip.hidden = false;
     const r = perk.getBoundingClientRect();
@@ -165,7 +161,7 @@ document.addEventListener('focusin', showTip);
 
 // Weapon sections: each shows when a weapon in it does and counts those
 // showing, as Roll Quality's heading counts them all.
-function countFamilies(page) {
+function countCards(page) {
     for (const fold of page.querySelectorAll('details.fold')) {
         const count = fold.querySelector(':scope > summary .count');
         if (!count) {
@@ -183,14 +179,16 @@ function countFamilies(page) {
 addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
 
 // Perk grids (grids.html.j2): a grid's template is cloned into a Popular
-// row or a weapons card the first time it opens. Its rows go in the order of
+// row or a weapon card the first time it opens. Its rows go in the order of
 // the side shown (data-r holds each side's place), its perks named by a list
 // the wishlist switch shows get that list's ring (data-l holds the places of
 // the lists naming each), and its trait pairs' lines are drawn from its paths
-// (each side's figures in data-pve and data-pvp). Hovering or focusing a trait
-// focuses it: its partners light up, tinted and lined by how often players
-// pair them, and the rest fade. Clicking it, or Enter, pins the focus until
-// Esc or another click.
+// (each side's figures in data-pve and data-pvp). On a weapon card the grid
+// shows the copy picked (the host's data-k): its perks outlined (data-o),
+// those in a roll it completes ringed solid (data-h), and its pairs' lines.
+// Hovering or focusing a trait focuses it: its partners light up, tinted and
+// lined by how often players pair them, and the rest fade. Clicking it, or
+// Enter, pins the focus until Esc or another click.
 
 // The list place the wishlist switch shows, as a string, or null for All
 // lists (and on a page without the switch).
@@ -203,46 +201,68 @@ function placeShown(page) {
     return String(pressed + 1);
 }
 
-// A grid's rows in its side's order.
-function sortGrid(grid) {
-    const i = Number(sideOf(grid) === 'pvp');
-    for (const list of grid.querySelectorAll('.pl')) {
-        const rows = [...list.children];
-        rows.sort((a, b) => a.dataset.r.split(' ')[i] - b.dataset.r.split(' ')[i]);
-        list.append(...rows);
-    }
+// A list's children (a grid column's rows, a picker's copies) in the order of
+// the side shown: data-r holds each side's place.
+function sortBySide(list) {
+    const i = Number(sideOf(list) === 'pvp');
+    const items = [...list.children];
+    items.sort((a, b) => a.dataset.r.split(' ')[i] - b.dataset.r.split(' ')[i]);
+    list.append(...items);
 }
 
-// A grid's wishlist rings: each perk named by a list shown is ringed (pick) in
-// those lists' colours (l<places>).
+// The places among a space- or dash-separated list (data-l, a hit's places)
+// that the wishlist switch shows.
+function placesShown(text, shown) {
+    return (text || '').split(/[ -]/).filter((place) => place && (!shown || place === shown));
+}
+
+// A grid's wishlist rings. With no copy shown, each perk named by a list shown
+// is ringed (pick) in those lists' colours (l<places>). With a copy, its perks
+// are outlined (owned); one in a roll of a list shown that the copy completes
+// is ringed solid (hit) in those lists' colours, and any other perk a list
+// shown names is ringed dashed (named).
 function paintGrid(grid) {
     const shown = placeShown(grid.closest('.page'));
+    const k = grid.closest('[data-g]').dataset.k;
+    grid.classList.toggle('has-copy', Boolean(k));
     for (const li of grid.querySelectorAll('.pk')) {
         for (const c of [...li.classList]) {
-            if (c === 'pick' || /^l\d/.test(c)) {
+            if (['pick', 'hit', 'named', 'owned'].includes(c) || /^l\d/.test(c)) {
                 li.classList.remove(c);
             }
         }
-        let places = (li.dataset.l || '').split(' ').filter(Boolean);
-        if (shown) {
-            places = places.filter((place) => place === shown);
+        let places = placesShown(li.dataset.l, shown);
+        let state = 'pick';
+        if (k) {
+            state = 'named';
+            if ((li.dataset.o || '').split(' ').includes(k)) {
+                li.classList.add('owned');
+            }
+            const hit = (li.dataset.h || '').split(' ').find((h) => h.startsWith(k + ':'));
+            const hits = placesShown(hit && hit.split(':')[1], shown);
+            if (hits.length) {
+                state = 'hit';
+                places = hits;
+            }
         }
         if (places.length) {
-            li.classList.add('pick', 'l' + places.join('-'));
+            li.classList.add(state, 'l' + places.join('-'));
         }
     }
 }
 
 // A pair's figures on a side, from its line's path: its rank, rel, share,
 // each trait's share with the other (c1, c2) and the other's rank among its
-// partners (n1, n2); null when the side has no votes for it.
+// partners (n1, n2), each 0 where players weren't seen with it, and its
+// verdict (g, b or m); null when the side has no pair scores.
 function pairOn(path, side) {
     const figures = path.dataset[side];
     if (!figures) {
         return null;
     }
-    const [rank, rel, share, c1, c2, n1, n2] = figures.split(' ').map(Number);
-    return { path, rank, rel, share, c1, c2, n1, n2 };
+    const fields = figures.split(' ');
+    const [rank, rel, share, c1, c2, n1, n2] = fields.slice(0, 7).map(Number);
+    return { path, rank, rel, share, c1, c2, n1, n2, verdict: fields[7] };
 }
 
 // How strongly a line shows: steeply fainter as its pair's share drops.
@@ -272,7 +292,11 @@ function drawLine(box, from, to, pair, cls, width, opacity, color) {
 // The trait columns in focus: a focused trait's six most run partners light
 // up (tinted, with their share of its rolls) and are lined, weighted by how
 // often players pick the pair; the other traits fade, and so do the other
-// columns. Without a focus, the side's three most picked pairs are lined.
+// columns. Without a focus, the side's three most picked pairs are lined, or
+// with a copy shown, the pairs it can make that are desired (in a roll of a
+// list shown, or the pair's verdict) or undesirable (in a trash roll of a list
+// shown, or the verdict), a trash pair in red, and dashed, the two most picked
+// pairs it can't make.
 function applyFocus(grid, focus) {
     grid._focus = focus;
     for (const li of grid.querySelectorAll('.pk')) {
@@ -301,8 +325,9 @@ function applyFocus(grid, focus) {
     }
     const side = sideOf(grid);
     const row = (col, key) => col.querySelector(`[data-tip="${key}"]`);
-    const pairs = paths.map((p) => pairOn(p, side)).filter(Boolean);
+    const pairs = paths.map((p) => pairOn(p, side)).filter((p) => p && p.rank);
     pairs.sort((x, y) => x.rank - y.rank);
+    const k = grid.closest('[data-g]').dataset.k;
     if (focus) {
         const first = t1.contains(focus);
         const key = focus.dataset.tip;
@@ -341,6 +366,41 @@ function applyFocus(grid, focus) {
         }
         for (const list of grid.querySelectorAll('.pc:not([data-col^="trait"]) .pl')) {
             list.classList.add('soft');
+        }
+    } else if (k) {
+        const shown = placeShown(grid.closest('.page'));
+        const made = paths.filter((path) => (path.dataset.c || '').split(' ').includes(k));
+        for (const path of made) {
+            const p = pairOn(path, side) || { path, rel: 0, verdict: null };
+            const trash = placesShown(path.dataset.t, shown).length > 0;
+            const wanted = !trash && placesShown(path.dataset.w, shown).length > 0;
+            let cls = null;
+            if (trash || (!wanted && p.verdict === 'b')) {
+                cls = 'bad';
+            } else if (wanted || p.verdict === 'g') {
+                cls = 'good';
+            }
+            const from = row(t1, path.dataset.a);
+            const to = row(t2, path.dataset.b);
+            if (!cls || !from || !to) {
+                continue;
+            }
+            let opacity = Math.max(cls === 'bad' ? 0.4 : 0.3, fade(p.rel));
+            if (wanted) {
+                opacity = 1;
+            }
+            let color = heat(p.rel);
+            if (trash) {
+                color = 'var(--bad)';
+            }
+            drawLine(box, from, to, p, cls, 2.5, opacity, color);
+        }
+        for (const p of pairs.filter((x) => !made.includes(x.path)).slice(0, 2)) {
+            const from = row(t1, p.path.dataset.a);
+            const to = row(t2, p.path.dataset.b);
+            if (from && to) {
+                drawLine(box, from, to, p, 'top', 1.5, 0.7 * fade(p.rel), heat(p.rel));
+            }
         }
     } else {
         for (const p of pairs.slice(0, 3)) {
@@ -416,9 +476,26 @@ function bindGrid(grid) {
     });
 }
 
-// Open the grid a host names (data-g: a Popular row's body): cloned from its
-// template the first time, then sorted for the side, its rings painted and
-// its lines drawn. A resized grid redraws its lines.
+// Show copy k on a weapon card: its picker entry checked, and the grid, once
+// open, painted and lined for it.
+function pickCopy(card, k) {
+    for (const entry of card.querySelectorAll('.pr')) {
+        entry.querySelector('.pr-select').setAttribute('aria-checked', entry.dataset.k === k);
+    }
+    const host = card.querySelector('[data-g]');
+    host.dataset.k = k;
+    const grid = host.querySelector('.pg');
+    if (grid) {
+        paintGrid(grid);
+        applyFocus(grid, grid._pinned || null);
+    }
+}
+
+// Open the grid a host names (data-g: a Popular row's body, a weapon card's
+// main column): cloned from its template the first time, then sorted for the
+// side, its rings painted and its lines drawn. A weapon card's picker is
+// sorted for the side too, and shows its first copy until another is picked.
+// A resized grid redraws its lines.
 const resizer = new ResizeObserver((entries) => {
     for (const e of entries) {
         applyFocus(e.target, e.target._focus || null);
@@ -440,9 +517,41 @@ function openGrid(host) {
         bindGrid(grid);
         resizer.observe(grid);
     }
-    sortGrid(grid);
+    const card = host.closest('.fam');
+    if (card) {
+        const picker = card.querySelector('.picker');
+        sortBySide(picker);
+        if (!host.dataset.k) {
+            pickCopy(card, picker.firstElementChild.dataset.k);
+        }
+    }
+    for (const list of grid.querySelectorAll('.pl')) {
+        sortBySide(list);
+    }
     paintGrid(grid);
     applyFocus(grid, grid._pinned || null);
+}
+
+// The grid host of a card part a toggle opens: the part itself (a Popular
+// row's body), or the one inside it (a weapon card's body); null for others.
+function gridHost(target) {
+    if (target.dataset.g) {
+        return target;
+    }
+    return target.querySelector('[data-g]');
+}
+
+// Show a weapon card on a side: its switch pressed, and once its grid is open,
+// its picker and grid in that side's order, lines and colours.
+function setSide(card, side) {
+    card.dataset.side = side;
+    for (const b of card.querySelectorAll('.switch.side button')) {
+        b.setAttribute('aria-pressed', b.dataset.value === side);
+    }
+    const grid = card.querySelector('.pg');
+    if (grid) {
+        openGrid(grid.closest('[data-g]'));
+    }
 }
 
 // Popular's filters: a row shows when its name holds the search, it is of the
@@ -508,7 +617,7 @@ function setRolled(button, open) {
 }
 
 // A group rolled down or up (a weapon section, or a class's armor sets): it,
-// every section in it and every card in them (weapon families, armor sets)
+// every section in it and every card in them (weapon cards, armor sets)
 // opened or closed, their double chevrons turned to match.
 function roll(group, open) {
     for (const d of [group, ...group.querySelectorAll('details')]) {
@@ -520,8 +629,9 @@ function roll(group, open) {
         t.setAttribute('aria-expanded', open);
         const target = document.getElementById(t.getAttribute('aria-controls'));
         target.hidden = !open;
-        if (open && target.dataset.g) {
-            openGrid(target);
+        const host = gridHost(target);
+        if (open && host) {
+            openGrid(host);
         }
     }
     for (const b of group.querySelectorAll('.expand')) {
@@ -545,7 +655,7 @@ document.addEventListener('toggle', (e) => {
 // listed-<key>, or listed-* for All lists. The weapon sections are recounted.
 function applySwitches(page) {
     const list = page.querySelector('.switch[data-key="wl"] [aria-pressed="true"]');
-    const keys = new Set([...page.querySelectorAll('.switch')].map((sw) => sw.dataset.key));
+    const keys = new Set([...page.querySelectorAll('.switch[data-key]')].map((sw) => sw.dataset.key));
     for (const key of keys) {
         const pressed = page.querySelectorAll(`.switch[data-key="${key}"] [aria-pressed="true"]`);
         const values = [...pressed].map((b) => {
@@ -559,7 +669,7 @@ function applySwitches(page) {
             el.hidden = !values.every((value) => shows.includes(value));
         }
     }
-    countFamilies(page);
+    countCards(page);
     for (const grid of page.querySelectorAll('.pg')) {
         paintGrid(grid);
         applyFocus(grid, grid._pinned || null);
@@ -567,83 +677,12 @@ function applySwitches(page) {
     filterPopular(page);
 }
 
-// Roll Quality's sorts, one per family across its tables: by score (the
-// report's ranking, or its reverse) or by element (A to Z or Z to A, ties by
-// instance id). The Wishlist row stays first.
-function byId(a, b) {
-    const x = a.dataset.id;
-    const y = b.dataset.id;
-    if (x.length !== y.length) {
-        return x.length - y.length;
-    }
-    if (x < y) {
-        return -1;
-    }
-    if (x > y) {
-        return 1;
-    }
-    return 0;
-}
-const ORDERS = {
-    'score-desc': (a, b) => b.dataset.score - a.dataset.score || a.dataset.n - b.dataset.n,
-    'score-asc': (a, b) => a.dataset.score - b.dataset.score || b.dataset.n - a.dataset.n,
-    'element-asc': (a, b) => a.dataset.element.localeCompare(b.dataset.element) || byId(a, b),
-    'element-desc': (a, b) => b.dataset.element.localeCompare(a.dataset.element) || byId(a, b),
-};
-
-// Sort a family's tables by mode (like 'element-asc'), and mark the active
-// header: cyan, its arrow up for ascending, and aria-sort.
-function sortFamily(body, mode) {
-    body.dataset.sort = mode;
-    const [key, dir] = mode.split('-');
-    for (const table of body.querySelectorAll('table.rolls')) {
-        const tbody = table.tBodies[0];
-        const rows = [...tbody.rows].filter((r) => !r.classList.contains('wish'));
-        rows.sort(ORDERS[mode]);
-        tbody.append(...rows);
-        for (const th of table.tHead.rows[0].cells) {
-            const button = th.querySelector('.sort');
-            if (!button) {
-                continue;
-            }
-            const on = button.dataset.sort === key;
-            button.classList.toggle('on', on);
-            button.classList.toggle('asc', on && dir === 'asc');
-            let sort = 'none';
-            if (on && dir === 'asc') {
-                sort = 'ascending';
-            } else if (on) {
-                sort = 'descending';
-            }
-            th.setAttribute('aria-sort', sort);
-        }
-    }
-}
-
 document.addEventListener('click', (e) => {
-    // A sort header: the active sort flips direction; the other starts at
-    // score's best first, or element's A to Z.
-    const sorter = e.target.closest('.sort');
-    if (sorter) {
-        const body = sorter.closest('.fam-body');
-        const current = body.dataset.sort || 'score-desc';
-        const key = sorter.dataset.sort;
-        let mode = key + '-asc';
-        if (key === 'score') {
-            mode = 'score-desc';
-        }
-        if (mode === current && current.endsWith('-asc')) {
-            mode = key + '-desc';
-        } else if (mode === current) {
-            mode = key + '-asc';
-        }
-        sortFamily(body, mode);
-    }
-
     // A switch: one button pressed at a time, the page's elements shown to
     // match (applySwitches). A multi switch's buttons each toggle beside its
     // All, which clears them; a flip switch's one button flips. Both filter
-    // Popular.
+    // Popular. A side switch sets the side of its weapon card, or of every
+    // card for the page's Popularity switch.
     const button = e.target.closest('.switch button');
     if (button && button.closest('.switch.multi')) {
         const all = button.parentElement.children[0];
@@ -660,6 +699,17 @@ document.addEventListener('click', (e) => {
     } else if (button && button.closest('.switch.flip')) {
         button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') !== 'true');
         filterPopular(button.closest('.page'));
+    } else if (button && button.closest('.switch.side')) {
+        for (const b of button.parentElement.children) {
+            b.setAttribute('aria-pressed', b === button);
+        }
+        let cards = [button.closest('.fam')];
+        if (!cards[0]) {
+            cards = button.closest('.page').querySelectorAll('.fam');
+        }
+        for (const card of cards) {
+            setSide(card, button.dataset.value);
+        }
     } else if (button) {
         for (const b of button.parentElement.children) {
             b.setAttribute('aria-pressed', b === button);
@@ -675,27 +725,43 @@ document.addEventListener('click', (e) => {
         roll(expand.closest('details, .cls'), expand.getAttribute('aria-expanded') !== 'true');
     }
 
-    // Disclosure buttons (a weapon family's or armor set's name): show or
-    // hide the part of the card the button controls.
+    // Disclosure buttons (a weapon card's, armor set's or Popular weapon's
+    // name): show or hide the part of the card the button controls.
     const toggle = e.target.closest('.toggle');
     if (toggle) {
         const open = toggle.getAttribute('aria-expanded') !== 'true';
         toggle.setAttribute('aria-expanded', open);
         const target = document.getElementById(toggle.getAttribute('aria-controls'));
         target.hidden = !open;
-        if (open && target.dataset.g) {
-            openGrid(target);
+        const host = gridHost(target);
+        if (open && host) {
+            openGrid(host);
         }
     }
 
+    // A weapon card's picker entry shows its copy.
+    const entry = e.target.closest('.pr-select');
+    if (entry) {
+        pickCopy(entry.closest('.fam'), entry.parentElement.dataset.k);
+    }
+
     // Copy buttons (a DIM query, a copy's id): copy data-q, or show it to
-    // copy by hand when the clipboard refuses.
+    // copy by hand when the clipboard refuses. A text button says Copied for
+    // a moment; an icon button (a copy's id) turns green.
     const copier = e.target.closest('[data-q]');
     if (copier) {
         copier.dataset.label ??= copier.textContent;
         navigator.clipboard.writeText(copier.dataset.q).then(() => {
-            copier.textContent = 'Copied';
-            setTimeout(() => { copier.textContent = copier.dataset.label; }, 1200);
+            if (copier.dataset.label) {
+                copier.textContent = 'Copied';
+            }
+            copier.classList.add('copied');
+            setTimeout(() => {
+                if (copier.dataset.label) {
+                    copier.textContent = copier.dataset.label;
+                }
+                copier.classList.remove('copied');
+            }, 1200);
         }, () => prompt('Copy this', copier.dataset.q));
     }
 });

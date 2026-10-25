@@ -53,6 +53,8 @@
     /* The keyboard focus ring on a perk: white, apart from every list's
        colour. */
     --focus: var(--ink-hi);
+    /* A copy icon, for the buttons that copy a weapon copy's id. */
+    --copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='12' height='12' rx='2'/%3E%3Cpath d='M5 15V5a2 2 0 0 1 2-2h10'/%3E%3C/svg%3E");
     --head: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
     --body: 'Barlow', system-ui, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
@@ -164,7 +166,7 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .expand svg { transition: transform 0.15s; }
 .expand[aria-expanded="true"] svg { transform: rotate(90deg); }
 .type-icon { width: 32px; height: 32px; flex: none; border-radius: 3px; }
-/* Disclosure buttons: a weapon family's or armor set's name, which shows or
+/* Disclosure buttons: a weapon card's or armor set's name, which shows or
    hides the rest of its card. */
 .toggle { display: inline-flex; align-items: center; gap: 12px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .toggle .chev { flex: none; transition: transform 0.15s; }
@@ -180,7 +182,7 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .status.bad { color: var(--bad-ink); }
 .status.bad::before { background: var(--bad); }
 
-/* Weapons: true duplicates, then Roll Quality: each family's copies against the wishlists */
+/* Weapons: true duplicates, then Roll Quality: a card per weapon, its copies beside its perk grid */
 .review { flex-direction: row; flex-wrap: wrap; gap: 20px 40px; align-items: center; }
 .review > div { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; flex: 1 1 320px; }
 .lead { margin: 0; font: 700 28px var(--head); color: var(--ink-hi); }
@@ -194,11 +196,12 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .fam-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; }
 .fam-head h5 { margin: 0; font: 700 26px/1.15 var(--head); color: var(--ink-hi); }
 .fam-head .lgg { margin-left: auto; }
-/* A closed family shows its copy count; an open one shows the copies. */
+/* A closed card shows its copy count; an open one shows the copies. */
 .fam-head .copy-count { font: 14px var(--mono); color: var(--muted); }
 .fam-head:has(.toggle[aria-expanded="true"]) .copy-count { display: none; }
-/* A family's name with its ammo badge, its season and drop source under it;
-   then its element, frame and rounds per minute, stacked. */
+/* A card's name: its family's with the ammo badge, then its pool, season and
+   drop source under it; then its element, frame and rounds per minute,
+   stacked. */
 .fam-name { display: flex; flex-direction: column; gap: 4px; }
 .fam-name .origin { font: 400 13px/1.4 var(--body); }
 .fam-title { display: inline-flex; align-items: center; gap: 10px; }
@@ -207,61 +210,66 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .element, .frame { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-mid); }
 .element img, .frame img { width: 20px; height: 20px; }
 .fam-body { padding: 4px 20px 16px; border-top: 1px solid var(--line); }
-.no-list { margin: 0; padding: 14px 0 4px; color: var(--muted); }
-/* A family's table for one view of the wishlists: the Wishlist row, then a
-   row per copy; a column per perk socket, as wide as its widest cell, set
-   apart by a line. */
-.roll { overflow-x: auto; }
-.rolls { width: auto; }
-.rolls th, .rolls td { padding: 10px 8px; vertical-align: middle; }
-.rolls thead th { padding: 8px; font: 600 13px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-.rolls :is(th, td):nth-child(n+3) { border-left: 1px solid var(--line); }
-.rolls tbody th { font-weight: 400; }
-.rolls tr.wish { background: #0f2e2b33; }
-.rolls tr.wish th { font-weight: 600; }
-.rolls tr.wish td[colspan] { color: var(--muted); }
-.rolls .score { font: 500 20px var(--mono); color: var(--muted); }
-.rolls .score.keep { color: var(--keep); }
-/* A sortable column's header: the active sort is cyan, its arrow down for
-   descending and up for ascending. */
-.sort { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
-.sort:hover { color: var(--ink-hi); }
-.sort svg { flex: none; opacity: 0.4; transition: transform 0.15s; }
-.sort.on { color: var(--keep); }
-.sort.on svg { opacity: 1; }
-.sort.asc svg { transform: rotate(180deg); }
-.copy { display: flex; align-items: flex-start; gap: 10px; width: 250px; }
-.copy .wicon { width: 40px; height: 40px; }
-.copy-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; color: var(--ink-mid); }
-.copy-line { display: flex; align-items: center; gap: 8px; }
-.copy-n { font: 500 13px var(--mono); color: var(--muted); }
-.copy-id { padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 4px; background: transparent; font: 10px var(--mono); color: var(--info); white-space: nowrap; cursor: copy; }
-.copy-id:hover { color: var(--keep); }
-.copy .notes { color: var(--dim-note); overflow-wrap: anywhere; }
 .rpm { margin-top: -2px; font: 11px var(--mono); color: var(--muted); }
 .kill { display: inline-flex; align-items: center; gap: 6px; font: 13px var(--mono); color: var(--ink-mid); }
 .kill img { width: 16px; height: 16px; flex: none; opacity: 0.85; }
 .origin { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
-.copy .trash { color: var(--purge); }
-/* A cell's perks: a 30px slot each; a blank keeps the place of a pick the
-   copy lacks. A column's cells share its width, so when its perks wrap, every
-   row wraps at the same slot and the slots still line up. */
-.perks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.blank { width: 30px; height: 30px; flex: none; }
-/* A perk's ring gives its state: filled for a Wishlist pick or a perk in a
-   roll the copy completes, dashed for one a roll only names, faint for the
-   rest; faded when copy #1 has it too. Its colours are its lists' (the
-   generated l<places> rules: --ring, its border colours, and --tint for the
-   fill). */
-.perk { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border-radius: 50%; border: 2px solid var(--ring, var(--line)); cursor: default; }
-.perk img { width: 24px; height: 24px; border-radius: 50%; }
-.legend .perk { width: 22px; height: 22px; border-radius: 50%; border-width: 2px; border-color: var(--line); background: transparent; }
-.legend .perk:is(.hit, .named) { --tint: var(--ink-mid); border-color: var(--ink-mid); }
+/* A legend's perk ring: filled for a perk a wishlist roll names (or in a roll
+   the copy completes), dashed for one a roll only names. A list's colours
+   come from the generated l<places> rules: --ring, its border colours, and
+   --tint for the fill and its wishlist dot. */
+.perk { display: inline-flex; flex: none; border-radius: 50%; border: 2px solid var(--ring, var(--line)); }
 .perk.pick, .perk.hit { background: color-mix(in srgb, var(--tint) 14%, var(--card)); }
 .perk.named { border-style: dashed; }
 .wl-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--tint); }
-.perk.same { opacity: 0.35; }
-.perk.gap { margin-left: 8px; }
+
+/* A weapon card's name block: its toggle, then the Endgame badges under the
+   season and source, in line with the name (chevron 16 + gap 12 + icon 48 +
+   gap 12). Its own PvE/PvP switch is the report's switch, smaller, each
+   side's rank on its button; its confidence chip sits at the top right. */
+.fam-id { display: flex; flex-direction: column; gap: 6px; }
+.fam-id .endgame { margin-left: 88px; }
+.switch.mini { gap: 4px; }
+.switch.mini button { min-height: 30px; padding: 0 12px; font-size: 13px; }
+.switch.mini button .num { font-size: 12px; }
+.fam-head > .pop-chip { align-self: flex-start; }
+/* The grid's details line in a card leaves out light.gg: the header has it. */
+.fam .pop-meta .lgg { display: none; }
+/* A card's body: the picker on the left, the perk grid on the right. */
+.rp { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; padding-top: 16px; }
+@media (max-width: 900px) { .rp { grid-template-columns: minmax(0, 1fr); } }
+.rp-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* The picker: an entry per copy, best by popularity first, the copy shown
+   checked; each gives its place (#1 cyan) and its score in its heat. */
+.picker { display: flex; flex-direction: column; gap: 8px; }
+.pr { position: relative; }
+.pr-select { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--tile); text-align: left; cursor: pointer; }
+.pr-select:hover { border-color: var(--line-hi); }
+.pr-select[aria-checked="true"] { border-color: var(--keep); background: var(--keep-fill); }
+.pr-select:focus-visible, .copy-btn:focus-visible { outline: 2px solid var(--keep); outline-offset: 2px; }
+.pr .wicon { width: 40px; height: 40px; }
+.pr-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 13px; color: var(--ink-mid); }
+.pr-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-right: 26px; }
+.copy-n { font: 500 13px var(--mono); color: var(--muted); }
+.copy-n.keep { color: var(--keep); }
+.pr-pop { font: 12px var(--mono); }
+.pr-pop.c0 { color: var(--h0); } .pr-pop.c1 { color: var(--h1); } .pr-pop.c2 { color: var(--h2); } .pr-pop.c3 { color: var(--h3); }
+.pr-pop.c4 { color: var(--h4); } .pr-pop.c5 { color: var(--h5); } .pr-pop.c6 { color: var(--h6); } .pr-pop.c7 { color: var(--h7); }
+.pr-pop.c8 { color: var(--h8); } .pr-pop.c9 { color: var(--h9); } .pr-pop.c10 { color: var(--h10); }
+.pr-id { font: 10px var(--mono); color: var(--info); overflow-wrap: anywhere; }
+.version { font-size: 12px; color: var(--muted); }
+.pr-wish { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.pr-wish span { display: inline-flex; align-items: center; }
+.pr-wish .wl-dot { margin-right: 6px; }
+.pr-wish .none { color: var(--muted); }
+.pr .trash { color: var(--bad-ink); }
+.pr .notes { color: var(--dim-note); overflow-wrap: anywhere; }
+/* A copy's id button at its entry's corner, a copy icon drawn as a mask; it
+   turns green once copied. */
+.copy-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: copy; }
+.copy-btn::before { content: ''; position: absolute; inset: 4px; background: currentColor; -webkit-mask: var(--copy-icon) center / contain no-repeat; mask: var(--copy-icon) center / contain no-repeat; }
+.copy-btn:hover { color: var(--keep); background: var(--keep-fill); }
+.copy-btn.copied, .dim.copied { color: var(--ok); }
 
 /* Armor tiles: set cards, exotics, pieces without a tuning socket */
 .legend { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 15px; color: var(--ink-mid); }
@@ -420,13 +428,24 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 [data-side="pve"] .pk.qa:not(.owned, .named, .hit, .focus, .partner),
 [data-side="pvp"] .pk.qb:not(.owned, .named, .hit, .focus, .partner) { opacity: 0.5; }
 .pk.qa:hover, .pk.qb:hover, .pk.qa:focus-visible, .pk.qb:focus-visible { opacity: 1; }
+/* The copy shown on a weapon card: its perks outlined twice in their heat,
+   like the pair lines, over a strong heat fill; the perks it lacks step back
+   to a faint heat edge, a plain background and a dimmed icon (a card-coloured
+   veil over it, so the wishlist ring keeps full colour) and name. */
+.pk.owned { border-color: var(--heat); border-left: 6px solid var(--heat); box-shadow: inset 0 0 0 1px var(--heat); background: color-mix(in oklab, var(--heat) 45%, var(--card)); }
+.pk.owned > span { color: var(--ink-hi); font-weight: 600; }
+.pk.owned::after { color: var(--ink-hi); }
+.pg.has-copy .pk:not(.owned) { background: var(--card); border-left-color: color-mix(in oklab, var(--heat) 40%, var(--card)); }
+.pg.has-copy .pk:not(.owned) > span, .pg.has-copy .pk:not(.owned)::after { color: var(--faint); }
+.pg.has-copy .pk:not(.owned, .partner, .focus)::before { background-image: linear-gradient(#14140e8c, #14140e8c), var(--i); }
+.pg.has-copy .pk:is(.partner, .focus) > span { color: var(--ink-mid); }
 .pc[data-col^="trait"] .pk { cursor: pointer; }
 .pk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* A focused trait and its partners are outlined in their heat, the colour of
    their pair lines; a partner shows its share of the focused trait's rolls. */
 .pk.focus { border-color: var(--heat); box-shadow: 0 0 0 1px var(--heat); opacity: 1; }
 .pk.partner { border-color: var(--heat); opacity: 1; }
-.pk.partner::after { content: attr(data-f); color: var(--heat); }
+.pk.partner::after, .pg.has-copy .pk.partner::after { content: attr(data-f); color: var(--heat); }
 .pk.dim { opacity: 0.22; }
 .pl.soft { opacity: 0.5; }
 @media (prefers-reduced-motion: no-preference) { .pk, .pl { transition: opacity 0.15s; } }

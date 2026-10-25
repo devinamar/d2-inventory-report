@@ -69,7 +69,8 @@ def test_the_lists_cover_copies_purges_sets_and_preferences(conn, tmp_path):
     vault(conn)
     _, md = c.write_report(conn, tmp_path)
     assert (
-        '1. `id:w1`: gear tier 5, missing wishlist entries, not locked\n   - Trait: Rampage\n'
+        '1. `id:w1`: PvE 100% (#1), gear tier 5, missing wishlist entries, not locked\n'
+        '   - Trait 1: Rampage (PvE 70% #1)\n'
     ) in md
     assert 'Purge `id:e2`' in md
     assert '#### Kept Set' in md
@@ -77,7 +78,10 @@ def test_the_lists_cover_copies_purges_sets_and_preferences(conn, tmp_path):
     assert '| Mine | mine | https://example.com/w/mine.txt |' in md
 
 
-def test_a_family_names_its_rpm_season_and_source_and_each_copys_kills_and_trash(conn, tmp_path):
+def test_a_card_names_its_rpm_season_and_source_and_each_copys_kills_and_trash(conn, tmp_path):
+    # Voltron's only roll for the rifle trashes it whole, naming no perks, so
+    # no list covers it; w1 fits that roll. Without scores the copies keep
+    # their instance order.
     with conn:
         conn.execute(
             "INSERT INTO DestinyCollectibleDefinition VALUES (9, ?)",
@@ -108,7 +112,43 @@ def test_a_family_names_its_rpm_season_and_source_and_each_copys_kills_and_trash
         'Source: Exotic Archive at the Tower. DIM: `'
     ) in md
     assert (
-        '1. `id:w1`: gear tier 5, wishlist score 0, '
+        '1. `id:w1`: gear tier 5, missing wishlist entries, '
         'trash in Voltron (Pandapaxxy/Mercules +trash), 1,745 PvE kills, not locked'
     ) in md
-    assert '2. `id:w2`: gear tier 5, wishlist score 0, 1,745 PvE kills, not locked' in md
+    assert '2. `id:w2`: gear tier 5, missing wishlist entries, 1,745 PvE kills, not locked' in md
+
+
+def test_a_copys_perks_carry_their_shares_marks_and_the_favourites_it_lacks(conn, tmp_path):
+    # w1 rolls Rampage and Outlaw. It completes Mine's Rampage roll, not its
+    # Outlaw and Kill Clip roll. Players favour Kill Clip and Kill Clip +
+    # Outlaw on PvE.
+    sockets = [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A, c.TRAIT_PERK_C]
+    c.add_weapon_def(conn, 100, sockets=sockets)
+    c.add_popularity(
+        conn,
+        'Test Rifle',
+        [100],
+        columns=[
+            c.popularity_column('traits', [('Kill Clip + Outlaw', 0.6), ('Rampage + Outlaw', 0.3)]),
+            c.popularity_column('trait1', [('Kill Clip', 0.7), ('Rampage', 0.3)]),
+            c.popularity_column('trait2', [('Outlaw', 1.0)]),
+        ],
+    )
+    c.add_copy(conn, 'w1', 100, sockets)
+    with conn:
+        conn.execute("INSERT INTO weapon_result VALUES ('w1', 1, 1)")
+        conn.execute("INSERT INTO wishlist_preference VALUES ('mine', 'Mine', '')")
+        conn.execute("INSERT INTO wishlist_source (key, label, url) VALUES ('mine', 'Mine', '')")
+        conn.executemany(
+            "INSERT INTO wishlist_roll (roll_id, source_key, item_hash, perk1, perk2) "
+            "VALUES (?, 'mine', 100, ?, ?)",
+            [(1, c.TRAIT_PERK_A, None), (2, c.TRAIT_PERK_C, c.TRAIT_PERK_B)],
+        )
+        conn.execute("INSERT INTO instance_wishlist_match VALUES ('w1', 1)")
+    _, md = c.write_report(conn, tmp_path)
+    assert (
+        '1. `id:w1`: PvE 50% (#1), gear tier none, wishlist rolls completed: 1 Mine, not locked\n'
+        '   - Trait 1: Rampage ★ (PvE 30% #2); PvE favourite Kill Clip 70%\n'
+        '   - Trait 2: Outlaw ☆ (PvE 100% #1)\n'
+        '   - Trait pair: PvE Rampage + Outlaw 30% #2 (favourite Kill Clip + Outlaw 60%)\n'
+    ) in md

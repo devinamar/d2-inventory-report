@@ -50,7 +50,9 @@ Reports are written to the folder you run it from. Three
 One HTML page (and a Markdown copy) with:
 
 - **Summary**: what to review and what to purge
-- **Weapons**: duplicates, and each roll against the wishlists
+- **Weapons**: duplicates, and each copy against every perk its weapon can roll, ranked by
+  how often players pick them, with the wishlists' picks
+- **Popular**: the weapons players use most, PvE and PvP, and the perks they run on them
 - **Armor sets**: what each set keeps and purges
 - **Builds**: stat builds your armor falls short in
 - **Exotics**: extra exotic copies

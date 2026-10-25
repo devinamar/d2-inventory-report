@@ -1,4 +1,4 @@
-{# Weapons: the true duplicates (and any copy below Legendary), then Roll Quality: every weapon family with a copy left, or with the switches only those with more than one (the ones to review) or a wishlist's rolls, its copies against the wishlists in a table per view of the lists. #}
+{# Weapons: the true duplicates (and any copy below Legendary), then Roll Quality: a card per weapon with a copy left (the weapon d2-perk-popularity scores its version as, else its family), or with the switches only those with more than one copy (the ones to review) or a wishlist's rolls. A card opens on its copies, best by popularity first, beside the weapon's perk grid (grids.html.j2) showing the picked copy. #}
 {% import 'macros.html.j2' as m with context %}
 {% import 'text.j2' as t with context %}
 
@@ -13,60 +13,62 @@
 </div>
 {% endmacro %}
 
-{# A section's family count, which the weapons switches update to the families showing. #}
-{% macro count(rows) %}<span class="num count">{{ rows|map(attribute='family_name')|unique|list|length }}</span>{% endmacro %}
+{# A section's card count, which the weapons switches update to the cards showing. #}
+{% macro count(rows) %}<span class="num count">{{ rows|map(attribute='card')|unique|list|length }}</span>{% endmacro %}
 
+{# A copy's kill count, as DIM shows it: the count of the tracker plugged into its tracker socket, behind the badge of what it counts (PvE, PvP or Gambit). #}
+{% macro kill_count(c) %}<span class="kill" title="{{ c.kill_kind }} kills ({{ c.kill_tracker }})">{% if c.kill_icon %}<img src="{{ c.kill_icon }}" alt="{{ c.kill_kind }}" loading="lazy">{% endif %}{{ '{:,}'.format(c.kills) }}</span>{% endmacro %}
 
-{# A copy's cell: its icon with its gear tier and masterwork overlays, its number and full id (which copies it), lock and DIM tag, the version's name when it differs from the family's, its rounds per minute and its season and drop source when the family's copies differ in them, its kill count, the lists that trash it, and its DIM note. #}
-{% macro copy_cell(c, family) %}
-<div class="copy">
+{# A weapon's season, with its release date in its tooltip, and where it drops underneath; each left out when unknown. #}
+{% macro origin(c) %}{% if c.season_name or c.source %}<span class="origin">{% if c.season_name %}<span title="Released {{ c.season_date }}">{{ t.season(c) }}</span>{% endif %}{% if c.source %}<span>{{ c.source }}</span>{% endif %}</span>{% endif %}{% endmacro %}
+
+{# The wishlist switch values a picker line answers: the keys of lists, and * (All lists) when all is true; hidden at first without it. #}
+{% macro shows(keys, all) %}{% set values = (['*'] if all else []) + keys %} data-wl="{{ values|join(' ') }}"{% if not all %} hidden{% endif %}{% endmacro %}
+
+{# A copy's entry in its card's picker: its icon with its gear tier and masterwork overlays; for each side its place on the card and its popularity score, in its heat (data-r holds both places, which report.js orders the entries by); its id, lock and DIM tag; its version's name when it isn't the family's, and its element, rounds per minute, season and drop source when the card's copies differ in them; the lists with a roll it completes (No wishlist match, or Missing wishlist entries where the lists shown have no rolls for the weapon) and the lists that trash it, each line answering the wishlist switch; its kill count and DIM note. The corner button copies its id. #}
+{% macro pick(c) %}
+{% set covered = c.covered.split() %}
+{% set matched = c.matched.split() %}
+{% set trash = c.trash.split() %}
+{% set unmatched = covered|reject('in', matched)|list %}
+{% set missing = wishlists|map(attribute='key')|reject('in', covered)|list %}
+<div class="pr" data-k="{{ c.k }}" data-r="{{ c.pve_rank }} {{ c.pvp_rank }}">
+<button type="button" class="pr-select" role="radio" aria-checked="false">
 <span class="wicon" role="img" aria-label="{% if c.gear_tier %}Gear tier {{ c.gear_tier }}{% else %}No gear tier{% endif %}{% if c.is_masterworked %}, masterworked{% endif %}">{% for src in (c.icon, c.watermark, c.tier_overlay, c.masterwork_overlay) if src %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span>
-<span class="copy-text">
-<span class="copy-line"><span class="copy-n{% if c.n == 1 %} keep{% endif %}">#{{ c.n }}</span><button type="button" class="copy-id" data-q="{{ c.instance_id }}" title="Copy id {{ c.instance_id }}">{{ c.instance_id }}</button>{% if c.is_locked %}{{ m.icon('locked', 'Locked') }}{% endif %}{% if c.tag %}{{ m.icon(c.tag, 'DIM tag: ' ~ c.tag) }}{% endif %}</span>
-{% if c.name != family %}
+<span class="pr-text">
+<span class="pr-line">{% for side in ('pve', 'pvp') %}<span class="copy-n on-{{ side }}{% if c[side ~ '_rank'] == 1 %} keep{% endif %}">#{{ c[side ~ '_rank'] }}</span>{% if c[side ~ '_score'] is not none %}<span class="pr-pop on-{{ side }} c{{ c[side ~ '_heat'] }}">{{ (c[side ~ '_score'] * 100)|round|int }}%</span>{% endif %}{% endfor %}<span class="pr-id">{{ c.instance_id }}</span>{% if c.is_locked %}{{ m.icon('locked', 'Locked') }}{% endif %}{% if c.tag %}{{ m.icon(c.tag, 'DIM tag: ' ~ c.tag) }}{% endif %}</span>
+{% if c.name != c.family %}
 <span class="version">{{ c.name }}</span>
 {% endif %}
+{% if c.elements > 1 %}
+<span class="element">{% if c.element_icon %}<img src="{{ c.element_icon }}" alt="" loading="lazy">{% endif %}{{ c.element }}</span>
+{% endif %}
 {% if c.rpms > 1 and c.rpm %}
-<span>RPM: {{ c.rpm }}</span>
+<span class="rpm">RPM: {{ c.rpm }}</span>
 {% endif %}
 {% if c.origins > 1 %}
 {{ origin(c) }}
 {% endif %}
+<span class="pr-wish">{% for w in wishlists %}{% if w.key in matched %}<span{{ shows([w.key], true) }}><i class="wl-dot l{{ loop.index }}" aria-hidden="true"></i>{{ w.label }}</span>{% endif %}{% endfor %}{% if unmatched or (covered and not matched) %}<span class="none"{{ shows(unmatched, covered and not matched) }}>No wishlist match</span>{% endif %}{% if missing or not covered %}<span class="none"{{ shows(missing, not covered) }}>Missing wishlist entries</span>{% endif %}</span>
+{% if trash %}
+<span class="trash" data-wl="*">Trash in {% for w in wishlists if w.key in trash %}{{ w.label }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+{% if wishlists|length > 1 %}
+{% for w in wishlists if w.key in trash %}
+<span class="trash" data-wl="{{ w.key }}" hidden>Trash in {{ w.label }}</span>
+{% endfor %}
+{% endif %}
+{% endif %}
 {% if c.kills is not none %}
 {{ kill_count(c) }}
-{% endif %}
-{% if c.trash %}
-<span class="trash">Trash in {{ c.trash }}</span>
 {% endif %}
 {% if c.notes %}
 <span class="notes">DIM Note: {{ c.notes }}</span>
 {% endif %}
 </span>
+</button>
+<button type="button" class="copy-btn" data-q="{{ c.instance_id }}" title="Copy id {{ c.instance_id }}" aria-label="Copy id {{ c.instance_id }}"></button>
 </div>
 {% endmacro %}
-
-{# A copy's kill count, as DIM shows it: the count of the tracker plugged into its tracker socket, behind the badge of what it counts (PvE, PvP or Gambit). #}
-{% macro kill_count(c) %}<span class="kill" title="{{ c.kill_kind }} kills ({{ c.kill_tracker }})">{% if c.kill_icon %}<img src="{{ c.kill_icon }}" alt="{{ c.kill_kind }}" loading="lazy">{% endif %}{{ '{:,}'.format(c.kills) }}</span>{% endmacro %}
-
-{# A sortable column's header button (key score or element): the active sort, score at first, is cyan, its arrow down for descending and up for ascending (report.js). #}
-{% macro sort_button(key, label, on=false) %}<button type="button" class="sort{% if on %} on{% endif %}" data-sort="{{ key }}" title="Sort by {{ label|lower }}">{{ label }}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>{% endmacro %}
-
-{# A weapon's season, with its release date in its tooltip, and where it drops underneath; each left out when unknown. #}
-{% macro origin(c) %}{% if c.season_name or c.source %}<span class="origin">{% if c.season_name %}<span title="Released {{ c.season_date }}">{{ t.season(c) }}</span>{% endif %}{% if c.source %}<span>{{ c.source }}</span>{% endif %}</span>{% endif %}{% endmacro %}
-
-{# A copy's score cell in a table's view: its completed rolls from every list (scope *), or from one list. #}
-{% macro score(c, cell) %}
-{% if cell.score is none %}
-<td class="score" title="Missing wishlist entries">—</td>
-{% elif cell.scope == '*' %}
-<td class="score{% if cell.score %} keep{% endif %}" title="{{ cell.score }} wishlist rolls completed{% if c.split %}: {{ c.split }}{% endif %}">{{ cell.score }}</td>
-{% else %}
-<td class="score{% if cell.score %} keep{% endif %}" title="{{ cell.score }} of this list's rolls completed">{{ cell.score }}</td>
-{% endif %}
-{% endmacro %}
-
-{# A cell's perk: its icon in a ring whose look gives its state and whose colours (class l<rings>) its lists, faded when copy #1 has it too; a blank keeps the place of a pick the copy lacks. A pick's data-named lists the lists naming it, for its tooltip. #}
-{% macro perk(s) %}{% if s.perk %}<span class="perk {{ s.state }}{% if s.rings %} l{{ s.rings }}{% endif %}{% if s.faded %} same{% endif %}{% if s.gap %} gap{% endif %}" data-tip="{% if s.plug_hash %}{{ s.plug_hash }}{% else %}element-{{ s.perk }}{% endif %}"{% if s.lists %} data-named="{{ s.lists }}"{% endif %}>{% if s.icon %}<img src="{{ s.icon }}" alt="{{ s.perk }}" loading="lazy">{% endif %}</span>{% else %}<i class="blank"></i>{% endif %}{% endmacro %}
 <section class="page" id="page-weapons" hidden>
 <div class="intro">
 <h1>Weapons</h1>
@@ -110,16 +112,19 @@
 </section>
 
 <section class="block">
-<h2>Roll Quality <span class="num"><span class="count">{{ roll_quality|map(attribute='family_name')|unique|list|length }}</span> weapons</span></h2>
+<h2>Roll Quality <span class="num"><span class="count">{{ roll_copies|map(attribute='card')|unique|list|length }}</span> weapons</span></h2>
 
-{% if roll_quality %}
-<ul class="legend" aria-label="Perk legend">
-<li><i class="perk hit" aria-hidden="true"></i>Complete wishlist roll</li>
-<li><i class="perk named" aria-hidden="true"></i>Incomplete wishlist roll</li>
-<li><i class="perk" aria-hidden="true"></i>Any other perk</li>
-<li><i class="perk hit same" aria-hidden="true"></i>Faded: Shared with top roll</li>
-</ul>
-{# The weapons switches: a family card shows when its data-wpn names the pressed value of each; Has wishlist stands for the list the wishlist switch shows (listed-<key>, listed-* for All lists). #}
+{% if roll_copies %}
+{{ m.legend(true) }}
+{# The Popularity switch sets every card's side; each card's own switch sets its own (report.js). #}
+<div class="switch-row">
+<span class="label">Popularity</span>
+<div class="switch side" role="group" aria-label="Popularity">
+<button type="button" class="side-pve" data-value="pve" aria-pressed="true">PvE</button>
+<button type="button" class="side-pvp" data-value="pvp" aria-pressed="false">PvP</button>
+</div>
+</div>
+{# The weapons switches: a card shows when its data-wpn names the pressed value of each; Has wishlist stands for the list the wishlist switch shows (listed-<key>, listed-* for All lists). #}
 <div class="switch-row">
 <span class="label">Weapons</span>
 <div class="switch" role="group" aria-label="Weapons" data-key="wpn">
@@ -132,7 +137,7 @@
 </div>
 </div>
 {% if wishlists|length > 1 %}
-{# The wishlist switch: a table shows when its data-wl names the pressed value, * for All lists or a list's key. #}
+{# The wishlist switch: the list whose rings the grids show and whose rolls the pickers name (data-wl), every list's for All lists. #}
 <div class="switch-row">
 <span class="label">Wishlist</span>
 <div class="switch" role="group" aria-label="Wishlist" data-key="wl">
@@ -143,33 +148,26 @@
 </div>
 </div>
 {% endif %}
-
-{# Each list's colour, and each mix of them a perk ring shows. #}
-<style>
-{% for rings in (roll_cells|map(attribute='rings')|select|list + range(1, wishlists|length + 1)|map('string')|list)|unique %}
-{{ rings|ring_rule }}
-{% endfor %}
-</style>
 {% endif %}
 
-{% set cells_by_family = dict(roll_cells|group('family_name')) %}
-{% set columns_by_family = dict(roll_columns|group('family_name')) %}
 <div class="folds">
-{% for slot, slot_rows in roll_quality|group('slot') %}
+{% for slot, slot_rows in roll_copies|group('slot') %}
 <details class="fold" open>
 <summary>{{ m.expand() }}{{ m.chevron() }}<h3>{{ slot|replace(' Weapons', '') }} {{ count(slot_rows) }}</h3></summary>
 {% for wtype, type_rows in slot_rows|group('wtype') %}
 <details class="fold" open>
 <summary>{{ m.expand() }}{{ m.chevron() }}<h4>{% if type_rows[0].wtype_icon %}<img class="type-icon" src="{{ type_rows[0].wtype_icon }}" alt="" loading="lazy">{% endif %}{{ wtype }} {{ count(type_rows) }}</h4></summary>
 <div class="fams">
-{% for family, copies in type_rows|group('family_name') %}
+{% for card, copies in type_rows|group('card') %}
 {% set first = copies[0] %}
 {% set kind %}{{ first.wtype }}{% if first.archetypes == 1 %} · {{ first.archetype }}{% endif %}{% endset %}
-{% set fam_cells = cells_by_family.get(family, []) %}
-{% set covered = (fam_cells|map(attribute='shows')|unique|join(' ')).split() %}
-<article class="card fam" data-wpn="all{% if copies|length > 1 %} dupes{% endif %}{% if fam_cells|selectattr('n', 'equalto', 0)|first %} listed-*{% endif %}{% for key in covered if key != '*' %} listed-{{ key }}{% endfor %}">
+{% set covered = first.covered.split() %}
+<article class="card fam" data-side="pve" data-wpn="all{% if copies|length > 1 %} dupes{% endif %}{% if covered %} listed-*{% endif %}{% for key in covered %} listed-{{ key }}{% endfor %}">
 <header class="fam-head">
-<h5><button type="button" class="toggle" aria-expanded="false" aria-controls="fam-{{ first.instance_id }}" aria-label="{{ family }}">{{ m.chevron() }}<span class="wicon" role="img" aria-label="{{ kind }}" title="{{ kind }}"><img src="{{ first.icon }}" alt="" loading="lazy">{% if first.watermark %}<img src="{{ first.watermark }}" alt="" loading="lazy">{% endif %}</span><span class="fam-name"><span class="fam-title">{{ family }}{% if first.ammo %}<img class="ammo" src="{{ first.ammo_icon }}" alt="{{ first.ammo|capitalize }} ammo" title="{{ first.ammo|capitalize }} ammo" loading="lazy">{% endif %}</span>{% if first.origins == 1 %}{{ origin(first) }}{% endif %}</span></button></h5>
+<div class="fam-id">
+<h5><button type="button" class="toggle" aria-expanded="false" aria-controls="fam-{{ first.grid_id }}" aria-label="{{ card }}">{{ m.chevron() }}<span class="wicon" role="img" aria-label="{{ kind }}" title="{{ kind }}"><img src="{{ first.icon }}" alt="" loading="lazy">{% if first.watermark %}<img src="{{ first.watermark }}" alt="" loading="lazy">{% endif %}</span><span class="fam-name"><span class="fam-title">{{ first.family }}{% if first.ammo %}<img class="ammo" src="{{ first.ammo_icon }}" alt="{{ first.ammo|capitalize }} ammo" title="{{ first.ammo|capitalize }} ammo" loading="lazy">{% endif %}</span>{% if first.pool %}<span class="fam-pool">{{ first.pool }}</span>{% endif %}{% if first.origins == 1 %}{{ origin(first) }}{% endif %}</span></button></h5>
+{{ m.endgame_badges(first) }}
+</div>
 {% if first.elements == 1 or first.archetypes == 1 or (first.rpms == 1 and first.rpm) %}
 <span class="fam-stats">
 {% if first.elements == 1 %}
@@ -183,46 +181,27 @@
 {% endif %}
 </span>
 {% endif %}
+<div class="switch mini side" role="group" aria-label="{{ card }}: popularity side">{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) %}<button type="button" class="side-{{ side }}" data-value="{{ side }}" aria-pressed="{{ (side == 'pve')|lower }}">{{ label }} <span class="num">{% if first[side ~ '_weapon_rank'] %}#{{ first[side ~ '_weapon_rank'] }}{% else %}—{% endif %}</span></button>{% endfor %}</div>
 <span class="copy-count">{{ copies|length }} cop{% if copies|length == 1 %}y{% else %}ies{% endif %}</span>
 <a class="lgg" href="https://www.light.gg/db/items/{{ first.item_hash }}/" target="_blank" rel="noopener">light.gg</a>
 {{ m.dim_button(copies, 'Copy IDs') }}
-</header>
-<div class="fam-body" id="fam-{{ first.instance_id }}" hidden>
-{% set columns = columns_by_family.get(family, []) %}
-{% set copy_by_n = dict(copies|group('n')) %}
-{% for (scope, shows), rows in fam_cells|group('scope', 'shows') %}
-<div class="roll" data-wl="{{ shows }}"{% if scope != '*' %} hidden{% endif %}>
-<table class="rolls">
-<thead><tr><th scope="col">Copy</th><th scope="col" aria-sort="descending">{{ sort_button('score', 'Score', true) }}</th>{% for col in columns %}{% if col.socket_idx == -1 %}<th scope="col" aria-sort="none">{{ sort_button('element', col.label) }}</th>{% else %}<th scope="col">{{ col.label }}</th>{% endif %}{% endfor %}</tr></thead>
-<tbody>
-{% for n, row in rows|group('n') %}
-{% if loop.first and n %}
-<tr class="wish"><td colspan="{{ columns|length + 2 }}">Missing wishlist entries.</td></tr>
-{% endif %}
-{% set by_socket = dict(row|group('socket_idx')) %}
-{% if n %}
-{% set c = copy_by_n[n][0] %}
-<tr data-n="{{ n }}" data-id="{{ c.instance_id }}" data-element="{{ c.element }}" data-score="{% if row[0].score is none %}-1{% else %}{{ row[0].score }}{% endif %}">
-<th scope="row">{{ copy_cell(c, family) }}</th>
-{{ score(c, row[0]) }}
+{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) %}
+{% if first[side ~ '_confidence'] %}
+{{ m.confidence_chip(first[side ~ '_confidence'], side, first.grid_id, 'on-' ~ side) }}
 {% else %}
-<tr class="wish">
-<th scope="row">Wishlist</th>
-<td></td>
+<span class="pop-chip on-{{ side }}">No {{ label }} scores</span>
 {% endif %}
-{% for col in columns %}
-<td><span class="perks">{% for s in by_socket.get(col.socket_idx, []) %}{{ perk(s) }}{% endfor %}</span></td>
 {% endfor %}
-</tr>
+</header>
+<div class="fam-body" id="fam-{{ first.grid_id }}" hidden>
+<div class="rp">
+<div class="picker" role="radiogroup" aria-label="{{ card }} copies">
+{% for c in copies %}
+{{ pick(c) }}
 {% endfor %}
-</tbody>
-</table>
 </div>
-{% endfor %}
-{% set uncovered = wishlists|rejectattr('key', 'in', covered)|map(attribute='key')|join(' ') %}
-{% if uncovered %}
-<p class="no-list" data-wl="{{ uncovered }}" hidden>Missing entries in this wishlist.</p>
-{% endif %}
+<div class="rp-main" data-g="{{ first.grid_id }}"></div>
+</div>
 </div>
 </article>
 {% endfor %}
@@ -230,15 +209,6 @@
 </details>
 {% endfor %}
 </details>
-{% endfor %}
-</div>
-
-<div hidden>
-{% for p in roll_cells|selectattr('plug_hash')|unique(attribute='plug_hash') %}
-<div id="tip-{{ p.plug_hash }}"><b>{{ p.perk }}</b>{% if p.text %}<p>{{ p.text|icons(text_icons) }}</p>{% endif %}</div>
-{% endfor %}
-{% for p in roll_cells|selectattr('socket_idx', 'equalto', -1)|unique(attribute='perk') %}
-<div id="tip-element-{{ p.perk }}"><b>{{ p.perk }}</b></div>
 {% endfor %}
 </div>
 </section>

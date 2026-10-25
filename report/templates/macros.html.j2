@@ -82,21 +82,21 @@
 </div>
 {% endmacro %}
 
-{# A perk grid's row: its perk named by its plug (data-tip: its tooltip and icon), each side's heat (aN, bN; an or bn without scores), place (data-r), share (data-a, data-b, — when unvoted, absent without scores) and quiet trait (qa, qb), the wishlists naming it (data-l), and own for a perk only a copy has. #}
-{% macro grid_row(p) %}<li class="pk {% if p.pve_heat is none %}an{% else %}a{{ p.pve_heat }}{% endif %} {% if p.pvp_heat is none %}bn{% else %}b{{ p.pvp_heat }}{% endif %}{% if p.pve_quiet %} qa{% endif %}{% if p.pvp_quiet %} qb{% endif %}{% if p.own %} own{% endif %}" data-tip="p{{ p.plug_hash }}" data-r="{{ p.pve_pos }} {{ p.pvp_pos }}"{% if p.pve_rel is not none %} data-a="{{ p.pve_share|pct }}"{% endif %}{% if p.pvp_rel is not none %} data-b="{{ p.pvp_share|pct }}"{% endif %}{% if p.lists %} data-l="{{ p.lists }}"{% endif %}><span>{{ p.perk }}</span></li>{% endmacro %}
+{# A perk grid's row: its perk named by its plug (data-tip: its tooltip and icon), each side's heat (aN, bN; an or bn without scores), place (data-r), share (data-a, data-b, — when unvoted, absent without scores) and quiet trait (qa, qb), the wishlists naming it (data-l), and own for a perk only a copy has; on a weapons card the copies with it (data-o) and those whose completed rolls name it (data-h, k:places). #}
+{% macro grid_row(p) %}<li class="pk {% if p.pve_heat is none %}an{% else %}a{{ p.pve_heat }}{% endif %} {% if p.pvp_heat is none %}bn{% else %}b{{ p.pvp_heat }}{% endif %}{% if p.pve_quiet %} qa{% endif %}{% if p.pvp_quiet %} qb{% endif %}{% if p.own %} own{% endif %}" data-tip="p{{ p.plug_hash }}" data-r="{{ p.pve_pos }} {{ p.pvp_pos }}"{% if p.pve_rel is not none %} data-a="{{ p.pve_share|pct }}"{% endif %}{% if p.pvp_rel is not none %} data-b="{{ p.pvp_share|pct }}"{% endif %}{% if p.lists %} data-l="{{ p.lists }}"{% endif %}{% if p.owners %} data-o="{{ p.owners }}"{% endif %}{% if p.hits %} data-h="{{ p.hits }}"{% endif %}><span>{{ p.perk }}</span></li>{% endmacro %}
 
-{# A trait pair's line, drawn when shown: its traits' plugs (data-a, data-b), and per side the pair's rank, rel, share, each trait's share with this partner and the partner's rank among its own. #}
-{% macro pair_path(p) %}<path data-a="p{{ p.a }}" data-b="p{{ p.b }}"{% for side in ('pve', 'pvp') if p[side ~ '_rank'] %} data-{{ side }}="{{ p[side ~ '_rank'] }} {{ p[side ~ '_rel']|round(4) }} {{ p[side ~ '_share']|round(4) }} {{ p[side ~ '_c1']|round(4) }} {{ p[side ~ '_c2']|round(4) }} {{ p[side ~ '_n1'] }} {{ p[side ~ '_n2'] }}"{% endfor %}></path>{% endmacro %}
+{# A trait pair's line, drawn when shown: its traits' plugs (data-a, data-b); per side with pair scores the pair's rank, rel, share, each trait's share with this partner and the partner's rank among its own (0 each where players weren't seen with it) and its verdict (g, b or m); and on a weapons card the copies that can make it (data-c) and the places of the lists naming it in a roll (data-w) or a trash roll (data-t). #}
+{% macro pair_path(p) %}<path data-a="p{{ p.a }}" data-b="p{{ p.b }}"{% for side in ('pve', 'pvp') if p[side ~ '_verdict'] %}{% if p[side ~ '_rank'] %} data-{{ side }}="{{ p[side ~ '_rank'] }} {{ p[side ~ '_rel']|round(4) }} {{ p[side ~ '_share']|round(4) }} {{ p[side ~ '_c1']|round(4) }} {{ p[side ~ '_c2']|round(4) }} {{ p[side ~ '_n1'] }} {{ p[side ~ '_n2'] }} {{ p[side ~ '_verdict'] }}"{% else %} data-{{ side }}="0 0 0 0 0 0 0 {{ p[side ~ '_verdict'] }}"{% endif %}{% endfor %}{% if p.copies %} data-c="{{ p.copies }}"{% endif %}{% if p.wanted %} data-w="{{ p.wanted }}"{% endif %}{% if p.trash %} data-t="{{ p.trash }}"{% endif %}></path>{% endmacro %}
 
 {# The details line under a weapon's grid for one side: its confidence per column (or once, when every column has the same votes), its hard and normal content's copies and votes, when a copy was last used, and its light.gg page. #}
 {% macro meta_line(w, columns) %}
 <p class="pop-meta on-{{ w.side }}"><span><b>Confidence:</b> {% if w.same %}{{ w.confidence|capitalize }} in every column, from {{ '{:,}'.format(w.weakest_votes) }} effective votes{% else %}{% for c in columns %}{{ c.label }} {{ c.confidence }} ({{ '{:,}'.format(c.votes) }}){% if not loop.last %} · {% endif %}{% endfor %}{% endif %}</span><span><b>Hard content:</b> {{ '{:,}'.format(w.hard_copies) }} copies, {{ w.hard_votes|round|int }} effective votes</span><span><b>Normal content:</b> {{ '{:,}'.format(w.normal_copies) }} copies, {{ w.normal_votes|round|int }} effective votes</span><span><b>Last used:</b> {{ w.last_seen|day }}</span><a class="lgg" href="https://www.light.gg/db/items/{{ w.item_hash }}/" target="_blank" rel="noopener">light.gg</a></p>
 {% endmacro %}
 
-{# A weapon's confidence on a side, its weakest column's, in that level's heat; its tooltip gives the maths. #}
-{% macro confidence_chip(w) %}
+{# A weapon's confidence on a side, its weakest column's, in that level's heat, with any extra class; its tooltip gives the maths. #}
+{% macro confidence_chip(confidence, side, grid_id, cls='') %}
 {% set heat = {'high': 'hi', 'medium': 'mid', 'low': 'lo', 'very low': 'vlo'} %}
-{% if w.confidence %}<span class="pop-chip heat-{{ heat[w.confidence] }}" tabindex="0" data-tip="c-{{ w.side }}-{{ w.grid_id }}">{{ w.confidence|capitalize }} confidence</span>{% endif %}
+{% if confidence %}<span class="pop-chip heat-{{ heat[confidence] }}{% if cls %} {{ cls }}{% endif %}" tabindex="0" data-tip="c-{{ side }}-{{ grid_id }}">{{ confidence|capitalize }} confidence</span>{% endif %}
 {% endmacro %}
 
 {# A weapon's Endgame badges, PvE above PvP, each where hard content clears the bar on that side; the badge leads with its side's activity icon. #}

@@ -1,7 +1,7 @@
 {# The Markdown copy of the report, for a language model to review: the same six pages, each section saying what it shows, how it was derived and how to read it. #}
 {% import 'text.j2' as t with context %}
-{% set cells_by_family = dict(roll_cells|selectattr('scope', 'equalto', '*')|group('family_name')) %}
-{% set columns_by_family = dict(roll_columns|group('family_name')) %}
+{% set grid_by_id = dict(grid|group('grid_id')) %}
+{% set top_pairs = dict(popular_pairs|group('side', 'name')) %}
 {% set sets_by_class = dict(set_pieces|group('armor_class')) %}
 {% set legacy_by_class = dict(legacy|group('armor_class')) %}
 {% set short_by_class = dict(short_builds|group('armor_class')) %}
@@ -15,11 +15,11 @@
 
 **What this shows.** The run's headline numbers: the weapons to review (those with more than one copy) and the true duplicates, the armor pieces to purge, the three-stat builds the kept armor covers, and each class's armor.
 
-**How it was derived.** Counted from the stored results: Roll Quality's weapon families for the weapons to review, the weapon_pruning table for the true duplicates, the v_armor_pruning view for the armor to purge (pieces rescued for a build stay), and v_armor_reach for the builds.
+**How it was derived.** Counted from the stored results: Roll Quality's cards with more than one copy for the weapons to review, the weapon_pruning table for the true duplicates, the v_armor_pruning view for the armor to purge (pieces rescued for a build stay), and v_armor_reach for the builds.
 
 **Reading it.** Each later section lists what is counted here.
 
-- **Weapons:** {{ totals.families }} to review: weapon families with multiple copies, to compare in Roll Quality. {{ totals.true_duplicates }} true duplicates{% if totals.below_legendary %}, and {{ totals.below_legendary }} copies below Legendary, not compared{% endif %}. {{ totals.matched }} copies with wishlist matches; {{ totals.uncovered }} copies missing wishlist entries.
+- **Weapons:** {{ totals.to_review }} to review: weapons with multiple copies, to compare in Roll Quality. {{ totals.true_duplicates }} true duplicates{% if totals.below_legendary %}, and {{ totals.below_legendary }} copies below Legendary, not compared{% endif %}. {{ totals.matched }} copies with wishlist matches; {{ totals.uncovered }} copies missing wishlist entries.
 - **Armor:** {{ totals.armor_to_purge }} to purge.
 {% for r in purge_counts %}
   - {{ r.n }}: {{ armor_reasons[r.reason][0] }}. {{ armor_reasons[r.reason][1] }}
@@ -81,41 +81,39 @@ Below Legendary, not compared ({{ below|length }}). DIM: `{{ below|dim }}`
 {% endif %}
 ### Roll Quality
 
-**What this shows.** Each weapon family with more than one copy left: the perks its wishlist rolls name in each perk socket, then each copy, best first, with the perks it can equip there.
+**What this shows.** Every weapon with a copy left, one card per weapon: the weapon d2-perk-popularity scores the copy's version as (a family whose versions roll different trait pools is a card per pool, the pool in brackets), else its family. For each: its popularity on each side, the wishlists with rolls for it, then each copy, best PvE first, with its popularity scores, wishlist matches and perks.
 
-**How it was derived.** Copies group by family: the name without an Adept, Timelost or Harrowed suffix. A copy's perks in a socket are the ones it can switch to plus the one plugged. The wishlist picks are the perks the family's non-trash wishlist rolls, from every list, name in the sockets its copies have: those more lists name first, then those more rolls name. A copy's wishlist score is how many of the lists' non-trash rolls it can equip, with trait perks in different trait sockets, the lists' counts added together; a roll naming no perks fits every copy of its weapon, and a trash roll a copy fits marks it trash in that list instead. Copies rank by wishlist score, then gear tier, then age (lowest itemInstanceId). A weapon's ammo type is its definition's, its season comes from the release its definition's traits name, and its drop source is where its collection entry says it drops. RPM is a copy's rounds per minute (swords, fusion rifles and bows have none), and its kills are the count of the tracker plugged into its tracker socket, read as DIM reads it: PvE, PvP or Gambit.
+**How it was derived.** Copies group by card; a family is the name without an Adept, Timelost or Harrowed suffix. A copy's popularity score on a side is the mean, over the perk columns d2-perk-popularity scores for its weapon, of its best perk's share of the column's votes against the column's most picked perk's (100% when it has the favourite in every column); its two trait columns count as one, scored by its best trait pair against the most picked pair, or each on its own when the weapon has no pair scores. Copies rank by that score, then wishlist matches, gear tier and age (lowest itemInstanceId). A copy's perks in a column are the ones it can switch to plus the one plugged. A copy completes a wishlist roll when it can equip every perk the roll names, trait perks in different trait sockets; a roll naming no perks fits every copy of its weapon, and a trash roll a copy fits marks it trash in that list instead. A weapon's ammo type is its definition's, its season comes from the release its definition's traits name, and its drop source is where its collection entry says it drops. RPM is a copy's rounds per minute (swords, fusion rifles and bows have none), and its kills are the count of the tracker plugged into its tracker socket, read as DIM reads it: PvE, PvP or Gambit.
 
-**Reading it.** Nothing here is flagged: compare the copies and keep what you want; the first is the one to keep if only one stays. A copy's perks in a socket come in the order of the picks they match, then its others: ★ marks a perk in a wishlist roll the copy completes, ☆ one a wishlist roll names that the copy doesn't complete. When a family's copies differ in element, the element is listed like a perk; when they differ in rounds per minute, season or drop source, each copy names its own. "Trash in" names the lists that mark a copy's roll, or its whole weapon, as trash. "Missing wishlist entries" means no list has rolls for the weapon: judge it on light.gg (each family links its first copy's page).
+**Reading it.** Nothing here is flagged: compare the copies and keep what you want; the first is the roll closest to what PvE players run. A perk's share is of its column's votes on that side, with its rank in the column (#1 the most picked; — for a perk players weren't seen with); when the copy lacks a column's favourite, it is named. A pair's share is of all the weapon's trait pairs. ★ marks a perk in a wishlist roll the copy completes, ☆ one a wishlist roll names that the copy doesn't complete. When a card's copies differ in element, rounds per minute, season or drop source, each copy names its own. "Trash in" names the lists that mark a copy's roll, or its whole weapon, as trash. "Missing wishlist entries" means no list has rolls for the weapon: judge it on popularity or light.gg (each card links its first copy's page). Low and very low confidence rest on a few copies: read those scores loosely.
 
-{% for family, copies in roll_quality|selectattr('copies', 'gt', 1)|group('family_name') %}
+{% for card, copies in roll_copies|group('card') %}
 {% set first = copies[0] %}
-{% set columns = columns_by_family.get(family, []) %}
-{% set rows = dict(cells_by_family.get(family, [])|group('n')) %}
-{% set picks = dict(rows.get(0, [])|group('socket_idx')) %}
-{% set lists = rows.get(0, [])|map(attribute='lists')|unique|list %}
-#### {{ family }} ({{ copies|length }} copies)
+{% set covered = first.covered.split() %}
+{% set columns = grid_by_id.get(first.grid_id, [])|group('col') %}
+#### {{ card }} ({{ copies|length }} cop{% if copies|length == 1 %}y{% else %}ies{% endif %})
 
 {{ first.wtype }}{% if first.ammo %}, {{ first.ammo }} ammo{% endif %}{% if first.archetypes == 1 %}, {{ first.archetype }}{% endif %}{% if first.elements == 1 %}, {{ first.element }}{% endif %}{% if first.rpms == 1 and first.rpm %}, {{ first.rpm }} RPM{% endif %}{% if first.origins == 1 and first.season_name %}, {{ t.season(first) }}{% endif %}{% if first.origins == 1 and first.source %}, {{ first.source }}{% endif %}. DIM: `{{ copies|dim }}`. light.gg: https://www.light.gg/db/items/{{ first.item_hash }}/
 
-{% if picks %}
-Wishlist picks{% if lists|length == 1 %}, all named by {{ lists[0] }}{% else %}, each with the lists naming it{% endif %}:
+{% if first.pve_weapon_rank or first.pvp_weapon_rank %}Popularity: {% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) if first[side ~ '_weapon_rank'] %}{{ label }} #{{ first[side ~ '_weapon_rank'] }}, {{ first[side ~ '_confidence'] }} confidence{% if first[side ~ '_endgame'] %}, Endgame{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %}Not scored by d2-perk-popularity.{% endif %} {% if covered %}Wishlists with rolls for it: {% for w in wishlists if w.key in covered %}{{ w.label }}{% if not loop.last %}, {% endif %}{% endfor %}.{% else %}Missing wishlist entries: no list has rolls for it.{% endif %}
 
-{% for col in columns if col.socket_idx in picks %}
-- {{ col.label }}: {% for p in picks[col.socket_idx] %}{{ p.perk }}{% if lists|length > 1 %} ({{ p.lists }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
 
-{% endfor %}
-
-{% endif %}
-Copies, best first:
+Copies, best PvE first:
 
 {% for c in copies %}
-{% set perks = dict(rows.get(c.n, [])|selectattr('perk')|group('socket_idx')) %}
-{{ c.n }}. `id:{{ c.instance_id }}`{% if c.name != family %} ({{ c.name }}){% endif %}: {% if c.rpms > 1 and c.rpm %}{{ c.rpm }} RPM, {% endif %}{% if c.origins > 1 and c.season_name %}{{ t.season(c) }}, {% endif %}{% if c.origins > 1 and c.source %}{{ c.source }}, {% endif %}gear tier {{ c.gear_tier or 'none' }}, {% if c.has_wishlist %}wishlist score {{ c.match_count }}{% if c.split %} ({{ c.split }}){% endif %}{% else %}missing wishlist entries{% endif %}{% if c.trash %}, trash in {{ c.trash }}{% endif %}{% if c.kills is not none %}, {{ t.kills(c) }}{% endif %}, {% if c.is_locked %}locked{% else %}not locked{% endif %}{% if c.tag %}, DIM tag {{ c.tag }}{% endif %}{% if c.notes %}, DIM notes "{{ c.notes }}"{% endif %}
+{{ loop.index }}. `id:{{ c.instance_id }}`{% if c.name != c.family %} ({{ c.name }}){% endif %}: {% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) if c[side ~ '_score'] is not none %}{{ label }} {{ (c[side ~ '_score'] * 100)|round|int }}% (#{{ c[side ~ '_rank'] }}), {% endfor %}{% if c.elements > 1 %}{{ c.element }}, {% endif %}{% if c.rpms > 1 and c.rpm %}{{ c.rpm }} RPM, {% endif %}{% if c.origins > 1 and c.season_name %}{{ t.season(c) }}, {% endif %}{% if c.origins > 1 and c.source %}{{ c.source }}, {% endif %}gear tier {{ c.gear_tier or 'none' }}, {% if c.split %}wishlist rolls completed: {{ c.split }}{% elif covered %}no wishlist match{% else %}missing wishlist entries{% endif %}{% if c.trash %}, trash in {% for w in wishlists if w.key in c.trash.split() %}{{ w.label }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if c.kills is not none %}, {{ t.kills(c) }}{% endif %}, {% if c.is_locked %}locked{% else %}not locked{% endif %}{% if c.tag %}, DIM tag {{ c.tag }}{% endif %}{% if c.notes %}, DIM notes "{{ c.notes }}"{% endif %}
 
-{% for col in columns if col.socket_idx in perks %}
-   - {{ col.label }}: {% for p in perks[col.socket_idx] %}{{ p.perk }}{% if p.state == 'hit' %} ★{% elif p.state == 'named' %} ☆{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% for col, cells in columns %}
+{% set perks = cells|selectattr('owners', 'naming', c.k)|list %}
+{% if perks %}
+   - {{ cells[0].label }}: {% for r in perks %}{{ r.perk }}{% if (' ' ~ c.k ~ ':') in ' ' ~ r.hits %} ★{% elif r.lists %} ☆{% endif %}{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) if r[side ~ '_rel'] is not none %}{% if loop.first %} ({% endif %}{{ label }} {{ r[side ~ '_share']|pct }}{% if r[side ~ '_rank'] %} #{{ r[side ~ '_rank'] }}{% endif %}{% if loop.last %}){% else %}, {% endif %}{% endfor %}{% if not loop.last %}, {% endif %}{% endfor %}{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) %}{% set top = cells|selectattr(side ~ '_rank', 'equalto', 1)|first %}{% if top and top.owners is not naming(c.k) %}; {{ label }} favourite {{ top.perk }} {{ top[side ~ '_share']|pct }}{% endif %}{% endfor %}
 
+{% endif %}
 {% endfor %}
+{% if c.pve_pair or c.pvp_pair %}
+   - Trait pair: {% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) if c[side ~ '_pair'] %}{% set top = top_pairs.get((side, c.entry), [])|first %}{{ label }} {{ c[side ~ '_pair'] }} {% if c[side ~ '_pair_rank'] %}{{ c[side ~ '_pair_share']|pct }} #{{ c[side ~ '_pair_rank'] }}{% else %}—{% endif %}{% if top and c[side ~ '_pair_rank'] != 1 %} (favourite {{ top.trait1 }} + {{ top.trait2 }} {{ top.share|pct }}){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}
+
+{% endif %}
 {% endfor %}
 
 {% endfor %}

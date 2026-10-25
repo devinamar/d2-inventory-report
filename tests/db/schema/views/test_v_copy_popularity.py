@@ -43,6 +43,14 @@ def test_a_copy_scores_its_best_perk_per_slot_with_its_traits_as_one_pair(conn):
         ('a', 'pvp', None, 0, 1),
         ('b', 'pvp', None, 0, 2),
     ]
+    pairs = conn.execute(
+        "SELECT instance_id, pair, pair_share, pair_rank FROM v_copy_popularity "
+        "WHERE side = 'pve' ORDER BY instance_id"
+    ).fetchall()
+    assert [tuple(r) for r in pairs] == [
+        ('a', 'Rampage + Outlaw', 0.4, 2),
+        ('b', 'Kill Clip + Outlaw', 0.8, 1),
+    ]
 
 
 def test_without_pair_scores_each_trait_column_is_a_slot(conn):

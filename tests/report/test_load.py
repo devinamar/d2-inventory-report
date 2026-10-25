@@ -65,22 +65,15 @@ def add_lists(conn, rolls, matches):
         conn.executemany("INSERT INTO instance_wishlist_match VALUES (?, ?)", matches)
 
 
-def table(rows, scope):
-    # The rows of the scope's table: {n: [(perk, state)]}, slot by slot, a
-    # blank as (None, None).
-    out = {}
-    for r in rows:
-        if r['scope'] == scope:
-            out.setdefault(r['n'], []).append((r['perk'], r['state']))
-    return out
-
-
-def test_roll_quality_ranks_copies_and_splits_their_scores(conn):
-    # Every family with a copy left, by name: the Solo Rifle's one copy, then
-    # the Test Rifle's, which rank by wishlist score, so c (Tier 4, score 3)
-    # comes first, then by gear tier: a (Tier 5) before b (Tier 4), both
-    # scoring 1. A pruned copy is left out. a's matched trash roll doesn't
-    # count in its split by list. Only the Test Rifle is to review.
+def test_roll_copies_rank_each_cards_copies_by_popularity(conn):
+    # Every card with a copy left, by name: the Solo Rifle's one copy, then
+    # the Test Rifle's, scored on PvE by its trait column. b's Rampage and c's
+    # are the favourite, a's Kill Clip half as picked: c leads on its 3
+    # wishlist matches, then b, then a. PvP has no scores, so wishlist
+    # matches, then gear tier, decide: c, a (Tier 5), b. A pruned copy is left
+    # out. a completes One's Kill Clip roll and fits Two's trash roll, which
+    # doesn't count in its split by list; only One's rolls name perks for the
+    # rifle. Only the Test Rifle is to review.
     add_rifle(conn)
     c.add_weapon_def(conn, 200, name='Solo Rifle', sockets=[c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A])
     add_rifle_copy(conn, 'b', [c.TRAIT_PERK_A, c.TRAIT_PERK_C], 4, 1)
@@ -88,6 +81,15 @@ def test_roll_quality_ranks_copies_and_splits_their_scores(conn):
     add_rifle_copy(conn, 'c', [c.TRAIT_PERK_A], 4, 3)
     add_rifle_copy(conn, 'pruned', [c.TRAIT_PERK_A], 4, 0)
     c.add_copy(conn, 'solo', 200, [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A], {1: [c.TRAIT_PERK_A]})
+    c.add_popularity(
+        conn,
+        'Test Rifle',
+        [100],
+        rank=4,
+        columns=[
+            c.popularity_column('trait1', [('Rampage', 0.6), ('Kill Clip', 0.3), ('Outlaw', 0.1)])
+        ],
+    )
     with conn:
         conn.execute("INSERT INTO weapon_result VALUES ('solo', 0, 0)")
         conn.execute("INSERT INTO weapon_pruning VALUES ('pruned', 'exact_duplicate', 'c')")
@@ -98,114 +100,47 @@ def test_roll_quality_ranks_copies_and_splits_their_scores(conn):
     )
 
     assert rows(
-        conn, load.ROLL_QUALITY, 'instance_id', 'n', 'copies', 'elements', 'archetypes', 'split'
+        conn,
+        load.ROLL_COPIES,
+        'instance_id',
+        'card',
+        'k',
+        'pve_rank',
+        'pve_heat',
+        'pvp_rank',
+        'pvp_score',
+        'pve_weapon_rank',
+        'split',
+        'matched',
+        'trash',
+        'covered',
     ) == [
-        ('solo', 1, 1, 1, 1, None),
-        ('c', 1, 3, 1, 1, None),
-        ('a', 2, 3, 1, 1, '1 One'),
-        ('b', 3, 3, 1, 1, None),
+        ('solo', 'Solo Rifle', 1, 1, None, 1, None, None, None, '', '', ''),
+        ('c', 'Test Rifle', 3, 1, 10, 1, None, 4, None, '', '', 'one'),
+        ('b', 'Test Rifle', 2, 2, 10, 3, None, 4, None, '', '', 'one'),
+        ('a', 'Test Rifle', 1, 3, 5, 2, None, 4, '1 One', 'one', 'two', 'one'),
     ]
     totals = conn.execute(load.TOTALS).fetchone()
-    assert totals['families'] == 1
+    assert totals['to_review'] == 1
     assert (totals['matched'], totals['uncovered']) == (3, 1)
 
 
-def test_roll_cells_line_each_copy_up_under_the_wishlist_picks(conn):
-    # One names Kill Clip and Rampage, Two Rampage and Outlaw with Firefly,
-    # which the rifle can't roll, so Firefly is no pick; One's Subsistence
-    # roll is trash. c and b complete the Rampage rolls, a One's Kill Clip
-    # roll; b has Outlaw but not Firefly, so Outlaw is only named for it.
+def test_grid_rows_name_the_copies_with_each_perk_and_the_rolls_they_complete(conn):
+    # a (1 on the card) can switch between Kill Clip and Rampage, b (2) has
+    # Rampage. Both complete One's Rampage roll, a Two's Kill Clip roll too:
+    # their places after the three default lists are 4 and 5.
     add_rifle(conn)
-    add_rifle_copy(conn, 'c', [c.TRAIT_PERK_A], 5, 2)
-    add_rifle_copy(conn, 'b', [c.TRAIT_PERK_A, c.TRAIT_PERK_C], 4, 2)
-    add_rifle_copy(conn, 'a', [c.TRAIT_PERK_B, c.TRAIT_PERK_D], 4, 1)
+    add_rifle_copy(conn, 'a', [c.TRAIT_PERK_B, c.TRAIT_PERK_A], 5, 2)
+    add_rifle_copy(conn, 'b', [c.TRAIT_PERK_A], 5, 1)
     add_lists(
         conn,
-        [
-            (1, 'one', c.TRAIT_PERK_B, None, 0),
-            (2, 'one', c.TRAIT_PERK_A, None, 0),
-            (3, 'two', c.TRAIT_PERK_A, None, 0),
-            (4, 'one', c.TRAIT_PERK_D, None, 1),
-            (5, 'two', c.TRAIT_PERK_C, c.TRAIT_PERK_E, 0),
-        ],
-        [('c', 2), ('c', 3), ('b', 2), ('b', 3), ('a', 1), ('a', 4)],
+        [(1, 'one', c.TRAIT_PERK_A, None, 0), (2, 'two', c.TRAIT_PERK_B, None, 0)],
+        [('a', 1), ('a', 2), ('b', 1)],
     )
-    cells = conn.execute(load.ROLL_CELLS).fetchall()
-    blank = (None, None)
-
-    # Both lists have rolls for it: a table for All lists, then one for each.
-    assert list(dict.fromkeys((r['scope'], r['shows']) for r in cells)) == [
-        ('*', '*'),
-        ('one', 'one'),
-        ('two', 'two'),
-    ]
-    # All lists: Rampage, which both name, first; then Kill Clip and Outlaw,
-    # one roll each, by name. Each copy's perks sit under the picks they
-    # match, its others after them.
-    assert table(cells, '*') == {
-        0: [('Rampage', 'pick'), ('Kill Clip', 'pick'), ('Outlaw', 'pick')],
-        1: [('Rampage', 'hit'), blank, blank],
-        2: [('Rampage', 'hit'), blank, ('Outlaw', 'named')],
-        3: [blank, ('Kill Clip', 'hit'), blank, ('Subsistence', '')],
-    }
-    # One list alone: its own picks; a perk only Two names is no pick here.
-    assert table(cells, 'one')[2] == [blank, ('Rampage', 'hit'), ('Outlaw', '')]
-    assert table(cells, 'two')[3] == [blank, blank, ('Kill Clip', ''), ('Subsistence', '')]
-    assert [(r['scope'], r['n'], r['perk']) for r in cells if r['faded']] == [
-        ('*', 2, 'Rampage'),
-        ('one', 2, 'Rampage'),
-        ('two', 2, 'Rampage'),
-    ]
-    assert [(r['scope'], r['n'], r['perk']) for r in cells if r['gap']] == [
-        ('*', 3, 'Subsistence'),
-        ('one', 2, 'Outlaw'),
-        ('one', 3, 'Subsistence'),
-        ('two', 3, 'Kill Clip'),
-    ]
-    assert {(r['scope'], r['n']): r['score'] for r in cells if r['n']} == {
-        ('*', 1): 2,
-        ('*', 2): 2,
-        ('*', 3): 1,
-        ('one', 1): 1,
-        ('one', 2): 1,
-        ('one', 3): 1,
-        ('two', 1): 1,
-        ('two', 2): 1,
-        ('two', 3): 0,
-    }
-    picks = [(r['scope'], r['perk'], r['lists']) for r in cells if r['n'] == 0]
-    assert ('*', 'Rampage', 'One, Two') in picks
-    # A ring's colours are its lists', by their places after the three
-    # default lists: One 4, Two 5. A hit shows the lists of the rolls the copy
-    # completes, a named perk or a pick the lists naming it.
-    assert {(r['n'], r['perk']): r['rings'] for r in cells if r['scope'] == '*' and r['perk']} == {
-        (0, 'Rampage'): '4-5',
-        (0, 'Kill Clip'): '4',
-        (0, 'Outlaw'): '5',
-        (1, 'Rampage'): '4-5',
-        (2, 'Rampage'): '4-5',
-        (2, 'Outlaw'): '5',
-        (3, 'Kill Clip'): '4',
-        (3, 'Subsistence'): None,
-    }
-
-
-def test_roll_tables_lead_with_the_elements_when_copies_differ(conn):
-    # The Arc and Void copies get an Element column before the perk sockets;
-    # the second Void copy's is faded, as copy #1 is Void too. With one list,
-    # the All lists table answers that list too.
-    add_rifle(conn)
-    add_rifle_copy(conn, 'void', [c.TRAIT_PERK_A], None, 1, damage_type=4)
-    add_rifle_copy(conn, 'arc', [c.TRAIT_PERK_A], None, 0, damage_type=2)
-    add_rifle_copy(conn, 'void2', [c.TRAIT_PERK_A], None, 0, damage_type=4)
-    add_lists(conn, [(1, 'one', c.TRAIT_PERK_A, None, 0)], [('void', 1)])
-    assert rows(conn, load.ROLL_COLUMNS, 'socket_idx', 'label') == [(-1, 'Element'), (1, 'Trait')]
-    cells = conn.execute(load.ROLL_CELLS).fetchall()
-    assert {r['shows'] for r in cells} == {'* one'}
-    assert [(r['n'], r['perk'], r['faded']) for r in cells if r['socket_idx'] == -1] == [
-        (1, 'Void', 0),
-        (2, 'Arc', 0),
-        (3, 'Void', 1),
+    assert rows(conn, load.GRID, 'col', 'perk', 'owners', 'hits', 'lists')[-3:] == [
+        ('trait1', 'Kill Clip', '1', '1:5', '5'),
+        ('trait1', 'Rampage', '1 2', '1:4 2:4', '4'),
+        ('trait1', 'Outlaw', '', '', ''),
     ]
 
 
@@ -471,14 +406,43 @@ def test_the_markdowns_columns_and_pairs_follow_populars_order(conn):
     ]
 
 
-def test_a_grids_pairs_carry_both_sides_figures(conn):
+def test_a_grids_pairs_carry_both_sides_figures_and_the_copies_making_them(conn):
     # Each trait by its plug; Gun's grid is named after its lowest version.
+    # d (4 on the card) makes Rampage + Outlaw, the top pair, desired on each
+    # side, which One (the fourth list) names; Kill Clip + Outlaw, second, is
+    # desired too. c's Kill Clip + Subsistence, which players weren't seen
+    # with, is undesirable (the pairs have medium confidence), and One trashes
+    # it.
     add_scored_guns(conn)
+    c.add_copy(conn, 'c', 100, [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_B, c.TRAIT_PERK_D])
+    c.add_copy(conn, 'd', 101, [c.INTRINSIC_ADAPTIVE, c.TRAIT_PERK_A, c.TRAIT_PERK_C])
+    add_lists(
+        conn,
+        [
+            (1, 'one', c.TRAIT_PERK_A, c.TRAIT_PERK_C, 0),
+            (2, 'one', c.TRAIT_PERK_B, c.TRAIT_PERK_D, 1),
+        ],
+        [],
+    )
     assert rows(
-        conn, load.GRID_PAIRS, 'grid_id', 'a', 'b', 'pve_rank', 'pve_c1', 'pvp_rank', 'pvp_n2'
+        conn,
+        load.GRID_PAIRS,
+        'grid_id',
+        'a',
+        'b',
+        'pve_rank',
+        'pve_c1',
+        'pve_verdict',
+        'pvp_rank',
+        'pvp_n2',
+        'pvp_verdict',
+        'copies',
+        'wanted',
+        'trash',
     ) == [
-        (100, 1001, 1003, 1, 1.0, 1, 1),
-        (100, 1002, 1003, 2, 1.0, 2, 2),
+        (100, 1001, 1003, 1, 1.0, 'g', 1, 1, 'g', '4', '4', ''),
+        (100, 1002, 1003, 2, 1.0, 'g', 2, 2, 'g', '', '', ''),
+        (100, 1002, 1004, None, None, 'b', None, None, 'b', '3', '', '4'),
     ]
 
 

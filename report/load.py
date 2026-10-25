@@ -34,34 +34,13 @@ GROUP BY a.armor_class
 ORDER BY c.class_n
 """
 
-# The weapon copies left after pruning, each with its family's copy count and
-# its place in the family (n): best wishlist score, then highest gear tier,
-# then the oldest.
-COPIES = """
-SELECT v.instance_id, v.item_hash, v.name, v.family_name, v.slot, v.slot_order, v.wtype,
-       v.wtype_icon, v.icon, v.watermark, v.ammo, v.ammo_icon, v.element, v.element_icon,
-       v.archetype, v.archetype_icon, v.gear_tier,
-       v.is_locked, v.is_masterworked, v.tier_overlay, v.masterwork_overlay,
-       v.rpm, v.season_num, v.season_name, v.season_date, v.source,
-       w.match_count, w.has_wishlist, d.tag, d.notes,
-       COUNT(*) OVER (PARTITION BY v.family_name) AS copies,
-       ROW_NUMBER() OVER (
-           PARTITION BY v.family_name
-           ORDER BY w.match_count DESC, COALESCE(v.gear_tier, 0) DESC, v.instance_id
-       ) AS n
-FROM v_weapon v
-JOIN weapon_result w ON w.instance_id = v.instance_id
-LEFT JOIN item_dim d ON d.instance_id = v.instance_id
-WHERE v.instance_id NOT IN (SELECT instance_id FROM weapon_pruning)
-"""
-
-# The run's headline counts. families is Roll Quality's family count.
-TOTALS = f"""
-WITH copy AS ({COPIES})
+# The run's headline counts. to_review is Roll Quality's cards with more than
+# one copy: the weapons to review.
+TOTALS = """
 SELECT (SELECT COUNT(*) FROM v_weapon) AS weapons, (SELECT COUNT(*) FROM v_armor) AS armor,
        (SELECT COUNT(*) FROM weapon_pruning WHERE reason = 'exact_duplicate') AS true_duplicates,
        (SELECT COUNT(*) FROM weapon_pruning WHERE reason = 'below_legendary') AS below_legendary,
-       (SELECT COUNT(DISTINCT family_name) FROM copy WHERE copies > 1) AS families,
+       (SELECT COUNT(DISTINCT card) FROM v_weapon_card WHERE copies > 1) AS to_review,
        COUNT(*) FILTER (WHERE w.match_count > 0) AS matched,
        COUNT(*) FILTER (WHERE NOT w.has_wishlist) AS uncovered,
        (SELECT COUNT(*) FROM v_armor_pruning WHERE NOT rescued) AS armor_to_purge,
@@ -128,298 +107,124 @@ JOIN v_weapon v ON v.instance_id = p.instance_id
 ORDER BY p.reason, v.name, p.instance_id
 """
 
-# Roll Quality: every weapon family with a copy left, by slot, weapon type and
-# family, each family's copies best first; the families with more than one
-# (copies > 1) are the ones to review. elements, archetypes, rpms and origins
-# count the family's distinct elements, frames, rounds per minute and pairs of
-# season and drop source; split gives a copy's completed wishlist rolls by
-# list, like "2 Voltron, 1 Aegis Endgame", and trash the lists with a trash
-# roll the copy fits, such as one trashing the whole weapon. kills is the
-# count of the tracker plugged into its tracker socket, as DIM shows it:
-# kill_kind what it counts (PvE, PvP or Gambit), kill_tracker its name and
-# kill_icon its badge; NULL when the plugged tracker counts none of those.
-ROLL_QUALITY = f"""
-WITH copy AS ({COPIES}),
-family AS (
-    SELECT family_name, COUNT(DISTINCT element) AS elements,
-           COUNT(DISTINCT archetype) AS archetypes, COUNT(DISTINCT rpm) AS rpms,
+# Roll Quality: every weapon copy left after pruning, on its card (the weapon its
+# version is scored as, so a family whose versions roll different trait pools
+# is a card per pool, else its family; k is its place there), by slot, weapon
+# type and card, each card's copies best PvE first. elements, archetypes, rpms
+# and origins count the card's distinct elements, frames, rounds per minute and
+# pairs of season and drop source. Per side (pve_, pvp_): the copy's popularity
+# score, its heat (tenths), its rank on the card and its best trait pair with
+# its share and rank (v_copy_popularity), and the card's weapon's rank,
+# confidence and Endgame flag (v_popularity_weapon; NULL where it isn't
+# scored), with pool, its trait pool's label. split gives the copy's completed
+# wishlist rolls by list, like "2 Voltron, 1 Aegis Endgame"; matched and trash
+# are the keys of the lists with a roll it completes or a trash roll it fits,
+# and covered the card's lists whose rolls name perks for its copies'
+# versions, each space-separated in list order. kills is the count of the
+# tracker plugged into its tracker socket, as DIM shows it: kill_kind what it
+# counts (PvE, PvP or Gambit), kill_tracker its name and kill_icon its badge;
+# NULL when the plugged tracker counts none of those.
+ROLL_COPIES = f"""
+WITH copy AS MATERIALIZED (
+    SELECT c.card, c.entry, c.family, c.grid_id, c.k, v.instance_id, v.item_hash, v.name,
+           v.slot, v.slot_order, v.wtype, v.wtype_icon, v.icon, v.watermark, v.ammo,
+           v.ammo_icon, v.element, v.element_icon, v.archetype, v.archetype_icon, v.gear_tier,
+           v.is_locked, v.is_masterworked, v.tier_overlay, v.masterwork_overlay, v.rpm,
+           v.season_num, v.season_name, v.season_date, v.source, d.tag, d.notes
+    FROM v_weapon_card c
+    JOIN v_weapon v ON v.instance_id = c.instance_id
+    LEFT JOIN item_dim d ON d.instance_id = c.instance_id
+),
+card AS (
+    SELECT card, COUNT(DISTINCT element) AS elements, COUNT(DISTINCT archetype) AS archetypes,
+           COUNT(DISTINCT rpm) AS rpms,
            COUNT(DISTINCT season_num || ' ' || season_name || ' ' || source) AS origins
     FROM copy
-    GROUP BY family_name
+    GROUP BY card
+),
+list AS (
+    SELECT key, label, ROW_NUMBER() OVER (ORDER BY rowid) AS place FROM wishlist_preference
+),
+covered AS (
+    SELECT card, group_concat(source_key, ' ' ORDER BY place) AS covered
+    FROM (
+        SELECT DISTINCT c.card, w.source_key, w.place
+        FROM copy c
+        JOIN v_wishlist_perk w ON w.item_hash IN (c.item_hash, {models.WILDCARD_ITEM_HASH})
+        WHERE NOT w.is_trash
+    )
+    GROUP BY card
+),
+completed AS (
+    SELECT m.instance_id, w.source_key, w.is_trash, COUNT(*) AS n
+    FROM instance_wishlist_match m
+    JOIN wishlist_roll w ON w.roll_id = m.roll_id
+    GROUP BY m.instance_id, w.source_key, w.is_trash
+),
+wish AS (
+    SELECT p.instance_id,
+           group_concat(CASE WHEN NOT p.is_trash THEN p.n || ' ' || l.label END, ', '
+                        ORDER BY l.place) AS split,
+           group_concat(CASE WHEN NOT p.is_trash THEN p.source_key END, ' ' ORDER BY l.place)
+               AS matched,
+           group_concat(CASE WHEN p.is_trash THEN p.source_key END, ' ' ORDER BY l.place)
+               AS trash
+    FROM completed p
+    JOIN list l ON l.key = p.source_key
+    GROUP BY p.instance_id
+),
+pop AS (
+    SELECT instance_id,
+           MAX(CASE WHEN side = 'pve' THEN score END) AS pve_score,
+           MAX(CASE WHEN side = 'pve' THEN rank END) AS pve_rank,
+           MAX(CASE WHEN side = 'pve' THEN pair END) AS pve_pair,
+           MAX(CASE WHEN side = 'pve' THEN pair_share END) AS pve_pair_share,
+           MAX(CASE WHEN side = 'pve' THEN pair_rank END) AS pve_pair_rank,
+           MAX(CASE WHEN side = 'pvp' THEN score END) AS pvp_score,
+           MAX(CASE WHEN side = 'pvp' THEN rank END) AS pvp_rank,
+           MAX(CASE WHEN side = 'pvp' THEN pair END) AS pvp_pair,
+           MAX(CASE WHEN side = 'pvp' THEN pair_share END) AS pvp_pair_share,
+           MAX(CASE WHEN side = 'pvp' THEN pair_rank END) AS pvp_pair_rank
+    FROM v_copy_popularity
+    GROUP BY instance_id
+),
+weapon AS (
+    SELECT name, MAX(pool) AS pool,
+           MAX(CASE WHEN side = 'pve' THEN rank END) AS pve_weapon_rank,
+           MAX(CASE WHEN side = 'pve' THEN confidence END) AS pve_confidence,
+           MAX(CASE WHEN side = 'pve' THEN endgame END) AS pve_endgame,
+           MAX(CASE WHEN side = 'pvp' THEN rank END) AS pvp_weapon_rank,
+           MAX(CASE WHEN side = 'pvp' THEN confidence END) AS pvp_confidence,
+           MAX(CASE WHEN side = 'pvp' THEN endgame END) AS pvp_endgame
+    FROM v_popularity_weapon
+    GROUP BY name
 ),
 tracker AS (
     SELECT instance_id, tracker, kind, kills, icon
     FROM v_kill_tracker
     WHERE is_plugged AND kind IS NOT NULL
 )
-SELECT copy.*, family.elements, family.archetypes, family.rpms, family.origins,
+SELECT copy.*, card.elements, card.archetypes, card.rpms, card.origins,
+       COALESCE(covered.covered, '') AS covered, wish.split,
+       COALESCE(wish.matched, '') AS matched, COALESCE(wish.trash, '') AS trash,
+       pop.pve_score, CAST(round(10 * pop.pve_score) AS INTEGER) AS pve_heat, pop.pve_rank,
+       pop.pve_pair, pop.pve_pair_share, pop.pve_pair_rank,
+       pop.pvp_score, CAST(round(10 * pop.pvp_score) AS INTEGER) AS pvp_heat, pop.pvp_rank,
+       pop.pvp_pair, pop.pvp_pair_share, pop.pvp_pair_rank,
+       weapon.pool, weapon.pve_weapon_rank, weapon.pve_confidence,
+       COALESCE(weapon.pve_endgame, 0) AS pve_endgame,
+       weapon.pvp_weapon_rank, weapon.pvp_confidence,
+       COALESCE(weapon.pvp_endgame, 0) AS pvp_endgame,
        tracker.kills, tracker.kind AS kill_kind, tracker.tracker AS kill_tracker,
-       tracker.icon AS kill_icon,
-       (SELECT group_concat(n || ' ' || label, ', ' ORDER BY ord)
-        FROM (SELECT COUNT(*) AS n, l.label, l.rowid AS ord
-              FROM instance_wishlist_match m
-              JOIN wishlist_roll w ON w.roll_id = m.roll_id AND NOT w.is_trash
-              JOIN wishlist_preference l ON l.key = w.source_key
-              WHERE m.instance_id = copy.instance_id
-              GROUP BY l.key)) AS split,
-       (SELECT group_concat(label, ', ' ORDER BY ord)
-        FROM (SELECT DISTINCT l.label, l.rowid AS ord
-              FROM instance_wishlist_match m
-              JOIN wishlist_roll w ON w.roll_id = m.roll_id AND w.is_trash
-              JOIN wishlist_preference l ON l.key = w.source_key
-              WHERE m.instance_id = copy.instance_id)) AS trash
+       tracker.icon AS kill_icon
 FROM copy
-JOIN family ON family.family_name = copy.family_name
+JOIN card ON card.card = copy.card
+JOIN pop ON pop.instance_id = copy.instance_id
+LEFT JOIN covered ON covered.card = copy.card
+LEFT JOIN wish ON wish.instance_id = copy.instance_id
+LEFT JOIN weapon ON weapon.name = copy.entry
 LEFT JOIN tracker ON tracker.instance_id = copy.instance_id
-ORDER BY copy.slot_order, copy.wtype, copy.family_name, copy.n
-"""
-
-# The columns of each Roll Quality family's tables: the perk sockets its copies
-# have, labelled from their perks' plug category, after an Element column
-# (socket_idx -1) when its copies differ in element.
-ROLL_COLUMNS = f"""
-WITH copy AS ({COPIES}),
-family AS (SELECT * FROM copy),
-socket AS (
-    SELECT f.family_name, r.socket_idx,
-           MIN(CASE pl.plugCategoryIdentifier
-                   WHEN 'scopes' THEN 'Scope' WHEN 'tubes' THEN 'Tube'
-                   WHEN 'bowstrings' THEN 'String' WHEN 'arrows' THEN 'Arrow'
-                   WHEN 'blades' THEN 'Blade' WHEN 'guards' THEN 'Guard'
-                   WHEN 'hafts' THEN 'Haft' WHEN 'batteries' THEN 'Battery'
-                   ELSE upper(substr(r.kind, 1, 1)) || substr(r.kind, 2)
-               END) AS label
-    FROM v_weapon_roll r
-    JOIN family f ON f.instance_id = r.instance_id
-    JOIN v_plug pl ON pl.hash = r.plug_hash
-    GROUP BY f.family_name, r.socket_idx
-    UNION ALL
-    SELECT family_name, -1, 'Element'
-    FROM family
-    GROUP BY family_name
-    HAVING COUNT(DISTINCT element) > 1
-)
-SELECT s.family_name, s.socket_idx, s.label
-FROM socket s
-JOIN (SELECT DISTINCT family_name, slot_order, wtype FROM family) f
-    ON f.family_name = s.family_name
-ORDER BY f.slot_order, f.wtype, s.family_name, s.socket_idx
-"""
-
-# Every cell of Roll Quality's tables, in the report's order. Each family has a
-# table per view of the wishlists: scope '*' counts every list's rolls, and
-# when more than one list has rolls for the weapon, each list's own follow (its
-# key as scope); shows lists the values of the wishlist switch a table answers
-# ('*' for All lists, and the key of a list that is the only one). A table's
-# rows are the Wishlist row (n 0) and each copy's (its n); a cell is a perk
-# socket's slot there (socket_idx -1 is the Element column when copies differ
-# in element). The Wishlist row holds the perks the view's rolls name in the
-# weapons' perk pool, those more lists name first, then those more rolls name
-# (state pick; lists names the lists). A copy's row puts its perk of the same
-# name under each, or a blank (NULL perk), then its other perks in the game's
-# order, gap marking the first of them; state is hit for a perk in a roll of
-# the view the copy completes, named for one the view's rolls name, '' for
-# the rest. rings gives the places (in wishlist_preference's order, 1 first)
-# of the lists whose colours a pick or a hit or named perk's ring shows, like
-# '1-3': in the view, the lists naming a pick or named perk, those with a roll
-# the copy completes naming a hit. faded is 1 when copy #1 has the perk too.
-# score is the rolls of the view the copy completes, NULL in '*' when no
-# wishlist covers the weapon. text is the perk's description, Clarity's when it
-# has one, else Bungie's.
-ROLL_CELLS = f"""
-WITH copy AS ({COPIES}),
-family AS MATERIALIZED (SELECT * FROM copy),
-copy_perk AS MATERIALIZED (
-    SELECT f.family_name, f.instance_id, f.n, r.socket_idx, r.perk, r.plug_hash,
-           MIN(r.position) AS position
-    FROM v_weapon_roll r
-    JOIN family f ON f.instance_id = r.instance_id
-    GROUP BY f.instance_id, r.socket_idx, r.perk
-),
-pool AS MATERIALIZED (
-    SELECT family_name, socket_idx, perk, plug_hash, MIN(position) AS position
-    FROM (
-        SELECT f.family_name, p.socket_idx, p.perk, p.plug_hash, p.position
-        FROM v_weapon_pool p
-        JOIN (SELECT DISTINCT family_name, item_hash FROM family) f ON f.item_hash = p.item_hash
-        WHERE p.can_roll AND EXISTS (
-            SELECT 1 FROM copy_perk cp
-            WHERE cp.family_name = f.family_name AND cp.socket_idx = p.socket_idx)
-        UNION ALL
-        SELECT family_name, socket_idx, perk, plug_hash, NULL FROM copy_perk
-    )
-    GROUP BY family_name, socket_idx, perk
-),
-named AS MATERIALIZED (
-    SELECT DISTINCT f.family_name, w.source_key, w.roll_id, d.name AS perk
-    FROM (SELECT DISTINCT family_name, item_hash FROM family) f
-    JOIN wishlist_roll w
-        ON w.item_hash IN (f.item_hash, {models.WILDCARD_ITEM_HASH}) AND NOT w.is_trash
-    JOIN DestinyInventoryItemDefinition d
-        ON d.hash IN (w.perk1, w.perk2, w.perk3, w.perk4, w.perk5, w.perk6)
-),
-completed AS MATERIALIZED (
-    SELECT m.instance_id, w.source_key, w.roll_id
-    FROM family f
-    JOIN instance_wishlist_match m ON m.instance_id = f.instance_id
-    JOIN wishlist_roll w ON w.roll_id = m.roll_id AND NOT w.is_trash
-),
-hit AS MATERIALIZED (
-    SELECT DISTINCT c.instance_id, c.source_key, d.name AS perk
-    FROM completed c
-    JOIN wishlist_roll w ON w.roll_id = c.roll_id
-    JOIN DestinyInventoryItemDefinition d
-        ON d.hash IN (w.perk1, w.perk2, w.perk3, w.perk4, w.perk5, w.perk6)
-),
-list AS MATERIALIZED (
-    SELECT key, ROW_NUMBER() OVER (ORDER BY rowid) AS place FROM wishlist_preference
-),
-covered AS MATERIALIZED (
-    SELECT DISTINCT n.family_name, n.source_key AS scope, l.rowid AS ord
-    FROM named n
-    JOIN wishlist_preference l ON l.key = n.source_key
-),
-scope AS MATERIALIZED (
-    SELECT f.family_name, '*' AS scope, 0 AS ord,
-           '*' || CASE WHEN COUNT(c.scope) = 1 THEN ' ' || MIN(c.scope) ELSE '' END AS shows
-    FROM (SELECT DISTINCT family_name FROM family) f
-    LEFT JOIN covered c ON c.family_name = f.family_name
-    GROUP BY f.family_name
-    UNION ALL
-    SELECT family_name, scope, ord, scope
-    FROM covered
-    WHERE family_name IN (SELECT family_name FROM covered GROUP BY family_name HAVING COUNT(*) > 1)
-),
-pick AS MATERIALIZED (
-    SELECT s.family_name, s.scope, p.socket_idx, p.perk, p.plug_hash,
-           ROW_NUMBER() OVER (
-               PARTITION BY s.family_name, s.scope, p.socket_idx
-               ORDER BY COUNT(DISTINCT n.source_key) DESC, COUNT(DISTINCT n.roll_id) DESC, p.perk
-           ) AS slot,
-           COUNT(*) OVER (PARTITION BY s.family_name, s.scope, p.socket_idx) AS picks
-    FROM scope s
-    JOIN pool p ON p.family_name = s.family_name
-    JOIN named n ON n.family_name = s.family_name AND n.perk = p.perk
-                AND (s.scope = '*' OR n.source_key = s.scope)
-    GROUP BY s.family_name, s.scope, p.socket_idx, p.perk
-),
-picks AS MATERIALIZED (
-    SELECT DISTINCT family_name, scope, socket_idx, picks FROM pick
-),
-pick_rings AS MATERIALIZED (
-    SELECT pk.family_name, pk.scope, pk.perk, group_concat(l.place, '-' ORDER BY l.place) AS rings
-    FROM (SELECT DISTINCT family_name, scope, perk FROM pick) pk
-    JOIN (SELECT DISTINCT family_name, source_key, perk FROM named) n
-        ON n.family_name = pk.family_name AND n.perk = pk.perk
-       AND (pk.scope = '*' OR n.source_key = pk.scope)
-    JOIN list l ON l.key = n.source_key
-    GROUP BY pk.family_name, pk.scope, pk.perk
-),
-hit_rings AS MATERIALIZED (
-    SELECT s.scope, h.instance_id, h.perk, group_concat(l.place, '-' ORDER BY l.place) AS rings
-    FROM hit h
-    JOIN family f ON f.instance_id = h.instance_id
-    JOIN scope s ON s.family_name = f.family_name AND (s.scope = '*' OR h.source_key = s.scope)
-    JOIN list l ON l.key = h.source_key
-    GROUP BY s.scope, h.instance_id, h.perk
-),
-slot AS MATERIALIZED (
-    SELECT f.family_name, pk.scope, f.instance_id, f.n, pk.socket_idx, pk.slot, cp.perk,
-           cp.plug_hash, 1 AS named, 0 AS gap
-    FROM family f
-    JOIN pick pk ON pk.family_name = f.family_name
-    LEFT JOIN copy_perk cp
-        ON cp.instance_id = f.instance_id AND cp.socket_idx = pk.socket_idx AND cp.perk = pk.perk
-    UNION ALL
-    SELECT family_name, scope, instance_id, n, socket_idx, picks + k, perk, plug_hash, 0,
-           k = 1 AND picks > 0
-    FROM (
-        SELECT f.family_name, s.scope, f.instance_id, f.n, cp.socket_idx, cp.perk, cp.plug_hash,
-               COALESCE(ps.picks, 0) AS picks,
-               ROW_NUMBER() OVER (
-                   PARTITION BY s.scope, f.instance_id, cp.socket_idx ORDER BY cp.position, cp.perk
-               ) AS k
-        FROM family f
-        JOIN scope s ON s.family_name = f.family_name
-        JOIN copy_perk cp ON cp.instance_id = f.instance_id
-        LEFT JOIN pick pk
-            ON pk.family_name = s.family_name AND pk.scope = s.scope
-           AND pk.socket_idx = cp.socket_idx AND pk.perk = cp.perk
-        LEFT JOIN picks ps
-            ON ps.family_name = s.family_name AND ps.scope = s.scope
-           AND ps.socket_idx = cp.socket_idx
-        WHERE pk.perk IS NULL
-    )
-),
-lists AS MATERIALIZED (
-    SELECT family_name, perk, group_concat(label, ', ' ORDER BY ord) AS lists
-    FROM (
-        SELECT DISTINCT n.family_name, n.perk, l.label, l.rowid AS ord
-        FROM named n
-        JOIN wishlist_preference l ON l.key = n.source_key
-    )
-    GROUP BY family_name, perk
-),
-first AS MATERIALIZED (
-    SELECT family_name, socket_idx, perk FROM copy_perk WHERE n = 1
-),
-score AS MATERIALIZED (
-    SELECT s.family_name, s.scope, f.instance_id,
-           CASE WHEN s.scope <> '*' THEN (
-                    SELECT COUNT(*) FROM completed c
-                    WHERE c.instance_id = f.instance_id AND c.source_key = s.scope)
-                WHEN f.has_wishlist THEN f.match_count
-           END AS score
-    FROM scope s
-    JOIN family f ON f.family_name = s.family_name
-),
-cell AS (
-    SELECT pk.family_name, pk.scope, 0 AS n, pk.socket_idx, pk.slot, pk.perk, pk.plug_hash,
-           'pick' AS state, pr.rings, 0 AS faded, 0 AS gap, NULL AS score, ls.lists
-    FROM pick pk
-    LEFT JOIN lists ls ON ls.family_name = pk.family_name AND ls.perk = pk.perk
-    LEFT JOIN pick_rings pr
-        ON pr.family_name = pk.family_name AND pr.scope = pk.scope AND pr.perk = pk.perk
-    UNION ALL
-    SELECT sl.family_name, sl.scope, sl.n, sl.socket_idx, sl.slot, sl.perk, sl.plug_hash,
-           CASE WHEN sl.perk IS NULL THEN NULL
-                WHEN NOT sl.named THEN ''
-                WHEN hr.rings IS NOT NULL THEN 'hit'
-                ELSE 'named'
-           END,
-           CASE WHEN sl.named THEN COALESCE(hr.rings, pr.rings) END,
-           sl.n > 1 AND t.perk IS NOT NULL, sl.gap, sc.score, NULL
-    FROM slot sl
-    JOIN score sc
-        ON sc.family_name = sl.family_name AND sc.scope = sl.scope
-       AND sc.instance_id = sl.instance_id
-    LEFT JOIN first t
-        ON t.family_name = sl.family_name AND t.socket_idx = sl.socket_idx AND t.perk = sl.perk
-    LEFT JOIN hit_rings hr
-        ON hr.scope = sl.scope AND hr.instance_id = sl.instance_id AND hr.perk = sl.perk
-    LEFT JOIN pick_rings pr
-        ON pr.family_name = sl.family_name AND pr.scope = sl.scope AND pr.perk = sl.perk
-    UNION ALL
-    SELECT f.family_name, sc.scope, f.n, -1, 1, f.element, NULL, '', NULL,
-           f.n > 1 AND f.element = t.element, 0, sc.score, NULL
-    FROM family f
-    JOIN score sc ON sc.family_name = f.family_name AND sc.instance_id = f.instance_id
-    JOIN family t ON t.family_name = f.family_name AND t.n = 1
-    WHERE f.family_name IN (
-        SELECT family_name FROM family GROUP BY family_name HAVING COUNT(DISTINCT element) > 1)
-)
-SELECT c.family_name, c.scope, s.shows, c.n, c.socket_idx, c.slot, c.perk, c.plug_hash,
-       CASE WHEN c.socket_idx = -1 THEN e.element_icon ELSE pl.icon END AS icon,
-       COALESCE(cn.text, pl.description, '') AS text,
-       c.state, c.rings, c.faded, c.gap, c.score, c.lists
-FROM cell c
-JOIN scope s ON s.family_name = c.family_name AND s.scope = c.scope
-JOIN (SELECT DISTINCT family_name, slot_order, wtype FROM family) f
-    ON f.family_name = c.family_name
-LEFT JOIN family e ON c.socket_idx = -1 AND e.family_name = c.family_name AND e.n = c.n
-LEFT JOIN v_plug pl ON pl.hash = c.plug_hash
-LEFT JOIN clarity_note cn ON cn.plug_hash = c.plug_hash
-ORDER BY f.slot_order, f.wtype, c.family_name, s.ord, c.n, c.socket_idx, c.slot
+ORDER BY copy.slot_order, copy.wtype, copy.card, pop.pve_rank
 """
 
 # Popular, and the perk grids it and the weapons page open.
@@ -484,45 +289,120 @@ ORDER BY p.side, w.rank, p.name, p.rank
 """
 
 # Every grid's rows (v_weapon_grid) with each perk's plug (v_perk), which names
-# its tooltip and icon, by grid, column and PvE place.
+# its tooltip and icon, by grid, column and PvE place. owners gives the places
+# on the grid's card (v_weapon_card's k) of the copies with the perk, and hits
+# each of those whose completed wishlist rolls name it, as k:places (the
+# lists' places, like 2:1-3), each space-separated.
 GRID = """
-SELECT g.*, p.plug_hash
+WITH owner AS (
+    SELECT c.grid_id, k.col, k.perk, group_concat(c.k, ' ' ORDER BY c.k) AS owners
+    FROM v_weapon_card c
+    JOIN v_copy_perk k ON k.instance_id = c.instance_id
+    GROUP BY c.grid_id, k.col, k.perk
+),
+hit AS (
+    SELECT grid_id, col, perk, group_concat(k || ':' || places, ' ' ORDER BY k) AS hits
+    FROM (
+        SELECT c.grid_id, k.col, k.perk, c.k,
+               replace(group_concat(DISTINCT w.place ORDER BY w.place), ',', '-') AS places
+        FROM v_weapon_card c
+        JOIN v_copy_perk k ON k.instance_id = c.instance_id
+        JOIN instance_wishlist_match m ON m.instance_id = c.instance_id
+        JOIN v_wishlist_perk w ON w.roll_id = m.roll_id AND w.perk = k.perk AND NOT w.is_trash
+        GROUP BY c.grid_id, k.col, k.perk, c.k
+    )
+    GROUP BY grid_id, col, perk
+)
+SELECT g.*, p.plug_hash, COALESCE(o.owners, '') AS owners, COALESCE(h.hits, '') AS hits
 FROM v_weapon_grid g
 JOIN v_perk p ON p.perk = g.perk
+LEFT JOIN owner o ON o.grid_id = g.grid_id AND o.col = g.col AND o.perk = g.perk
+LEFT JOIN hit h ON h.grid_id = g.grid_id AND h.col = g.col AND h.perk = g.perk
 ORDER BY g.grid_id, g.col_order, g.col, g.pve_pos
 """
 
-# Each grid's scored trait pairs, both sides' figures together for its lines
-# and tooltips: per side the pair's rank, rel and share, each trait's share
-# with this partner (c1, c2) and the partner's rank among its own (n1, n2);
-# NULL on a side without the pair. Each trait is named by its plug. By grid,
-# then PvE rank.
-GRID_PAIRS = """
-WITH pair AS (
-    SELECT v.grid_id, p.*
+# Each grid's trait pairs, the scored ones and those its card's copies can
+# make, both sides' figures together for its lines and tooltips: per side the
+# pair's rank, rel and share, each trait's share with this partner (c1, c2) and
+# the partner's rank among its own (n1, n2), NULL where players weren't seen
+# with it, and its verdict: g (desired: a top three pair, or 10% of the side's
+# pairs), b (undesirable: under 1% where the side's pairs have medium or high
+# confidence) or m (neither), NULL on a side without pair scores. Each trait is
+# named by its plug. copies gives the places on the card of the copies that
+# can make the pair, wanted and trash the places of the lists with a roll, or a
+# trash roll, naming both traits. By grid, then PvE rank.
+GRID_PAIRS = f"""
+WITH weapon AS (
+    SELECT DISTINCT name, grid_id FROM v_popularity_version
+),
+made AS MATERIALIZED (
+    SELECT c.grid_id, a.perk AS trait1, b.perk AS trait2,
+           group_concat(c.k, ' ' ORDER BY c.k) AS copies
+    FROM v_weapon_card c
+    JOIN v_copy_perk a ON a.instance_id = c.instance_id AND a.col = 'trait1'
+    JOIN v_copy_perk b ON b.instance_id = c.instance_id AND b.col = 'trait2'
+    GROUP BY c.grid_id, a.perk, b.perk
+),
+voted AS MATERIALIZED (
+    SELECT w.grid_id, p.*
     FROM v_popularity_pair p
-    JOIN (SELECT DISTINCT name, grid_id FROM v_popularity_version) v ON v.name = p.name
+    JOIN weapon w ON w.name = p.name
+),
+pair AS MATERIALIZED (
+    SELECT grid_id, trait1, trait2 FROM voted
+    UNION
+    SELECT grid_id, trait1, trait2 FROM made
+),
+scored AS MATERIALIZED (
+    SELECT w.grid_id, c.side, c.confidence IN ('medium', 'high') AS sure
+    FROM weapon w
+    JOIN v_popularity_column c ON c.name = w.name AND c.col = 'traits'
+),
+side AS MATERIALIZED (
+    SELECT p.grid_id, p.trait1, p.trait2, s.side, v.rank, v.rel, v.share,
+           v.trait1_cond AS c1, v.trait2_cond AS c2, v.trait1_n AS n1, v.trait2_n AS n2,
+           CASE WHEN v.rank <= 3 OR v.share >= 0.1 THEN 'g'
+                WHEN s.sure AND COALESCE(v.share, 0) < 0.01 THEN 'b'
+                ELSE 'm' END AS verdict
+    FROM pair p
+    JOIN scored s ON s.grid_id = p.grid_id
+    LEFT JOIN voted v
+        ON v.grid_id = p.grid_id AND v.side = s.side AND v.trait1 = p.trait1
+       AND v.trait2 = p.trait2
+),
+roll AS MATERIALIZED (
+    SELECT DISTINCT c.grid_id, w.roll_id, w.place, w.is_trash, w.perk
+    FROM v_weapon_card c
+    JOIN v_wishlist_perk w ON w.item_hash IN (c.item_hash, {models.WILDCARD_ITEM_HASH})
+),
+wish AS MATERIALIZED (
+    SELECT m.grid_id, m.trait1, m.trait2,
+           replace(group_concat(DISTINCT CASE WHEN NOT a.is_trash THEN a.place END
+                                ORDER BY a.place), ',', ' ') AS wanted,
+           replace(group_concat(DISTINCT CASE WHEN a.is_trash THEN a.place END
+                                ORDER BY a.place), ',', ' ') AS trash
+    FROM made m
+    JOIN roll a ON a.grid_id = m.grid_id AND a.perk = m.trait1
+    JOIN roll b ON b.grid_id = m.grid_id AND b.roll_id = a.roll_id AND b.perk = m.trait2
+    GROUP BY m.grid_id, m.trait1, m.trait2
 )
 SELECT p.grid_id, a.plug_hash AS a, b.plug_hash AS b,
-       MAX(CASE WHEN p.side = 'pve' THEN p.rank END) AS pve_rank,
-       MAX(CASE WHEN p.side = 'pve' THEN p.rel END) AS pve_rel,
-       MAX(CASE WHEN p.side = 'pve' THEN p.share END) AS pve_share,
-       MAX(CASE WHEN p.side = 'pve' THEN p.trait1_cond END) AS pve_c1,
-       MAX(CASE WHEN p.side = 'pve' THEN p.trait2_cond END) AS pve_c2,
-       MAX(CASE WHEN p.side = 'pve' THEN p.trait1_n END) AS pve_n1,
-       MAX(CASE WHEN p.side = 'pve' THEN p.trait2_n END) AS pve_n2,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.rank END) AS pvp_rank,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.rel END) AS pvp_rel,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.share END) AS pvp_share,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.trait1_cond END) AS pvp_c1,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.trait2_cond END) AS pvp_c2,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.trait1_n END) AS pvp_n1,
-       MAX(CASE WHEN p.side = 'pvp' THEN p.trait2_n END) AS pvp_n2
+       e.rank AS pve_rank, e.rel AS pve_rel, e.share AS pve_share, e.c1 AS pve_c1,
+       e.c2 AS pve_c2, e.n1 AS pve_n1, e.n2 AS pve_n2, e.verdict AS pve_verdict,
+       v.rank AS pvp_rank, v.rel AS pvp_rel, v.share AS pvp_share, v.c1 AS pvp_c1,
+       v.c2 AS pvp_c2, v.n1 AS pvp_n1, v.n2 AS pvp_n2, v.verdict AS pvp_verdict,
+       COALESCE(m.copies, '') AS copies, COALESCE(w.wanted, '') AS wanted,
+       COALESCE(w.trash, '') AS trash
 FROM pair p
 JOIN v_perk a ON a.perk = p.trait1
 JOIN v_perk b ON b.perk = p.trait2
-GROUP BY p.grid_id, p.trait1, p.trait2
-ORDER BY p.grid_id, pve_rank IS NULL, pve_rank, pvp_rank
+LEFT JOIN side e
+    ON e.grid_id = p.grid_id AND e.trait1 = p.trait1 AND e.trait2 = p.trait2 AND e.side = 'pve'
+LEFT JOIN side v
+    ON v.grid_id = p.grid_id AND v.trait1 = p.trait1 AND v.trait2 = p.trait2 AND v.side = 'pvp'
+LEFT JOIN made m ON m.grid_id = p.grid_id AND m.trait1 = p.trait1 AND m.trait2 = p.trait2
+LEFT JOIN wish w ON w.grid_id = p.grid_id AND w.trait1 = p.trait1 AND w.trait2 = p.trait2
+ORDER BY p.grid_id, pve_rank IS NULL, pve_rank, pvp_rank IS NULL, pvp_rank, p.trait1, p.trait2
 """
 
 # The choices of the Popular page's filters: each weapon type, slot (in bucket
@@ -788,9 +668,7 @@ def load(conn) -> dict:
         'armor_purge': rows(ARMOR_PURGE),
         'purge_counts': rows(PURGE_COUNTS),
         'weapon_flags': rows(WEAPON_FLAGS),
-        'roll_quality': rows(ROLL_QUALITY),
-        'roll_columns': rows(ROLL_COLUMNS),
-        'roll_cells': rows(ROLL_CELLS),
+        'roll_copies': rows(ROLL_COPIES),
         'popularity': rows(POPULARITY),
         'popular_columns': rows(POPULAR_COLUMNS),
         'popular_pairs': rows(POPULAR_PAIRS),
