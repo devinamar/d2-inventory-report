@@ -107,6 +107,14 @@ CREATE TABLE DestinyInventoryItemDefinition (
     --     DestinyPlugSetDefinition. If null, the item has no randomized plugs."
     --   reusablePlugSetHash: "If this socket's plugs come from a reusable
     --     DestinyPlugSetDefinition, this is the identifier for that set."
+    --   reusablePlugItems: "This is a list of pre-determined plugs that can
+    --     *always* be plugged into this socket, without the character having
+    --     the plug in their inventory." Kept only on a socket that names
+    --     neither plug set, where it is the only list of the socket's options
+    --     (most weapons' origin trait sockets); each entry keeps
+    --     plugItemHash: "The hash identifier of a
+    --     DestinyInventoryItemDefinition representing the plug that can be
+    --     inserted."
     -- Hashes are kept as sent, so one can name a plug or set that isn't
     -- stored. Like [{"singleInitialItemHash": 1482024992,
     -- "randomizedPlugSetHash": 2044988252}, ...].

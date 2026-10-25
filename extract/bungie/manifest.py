@@ -1,9 +1,10 @@
 # Manifest ingest: copies what the app uses from the downloaded manifest into
 # the tables named after its definitions (db/schema/bungie/manifest/): every
 # weapon, armor piece and plug (and the Gunsmith Orders, Banshee's bounties
-# whose icons picture the weapon types), their sockets and plug sets, and the
+# whose icons picture the weapon types), their sockets and plug sets, the
 # stats, damage types, champion types, classes, buckets, objectives, armor sets
-# and collectibles they name. Runs first in extract, and only for a new version.
+# and collectibles they name, and the activity modes. Runs first in extract,
+# and only for a new version.
 import contextlib
 import json
 import sqlite3
@@ -46,6 +47,7 @@ ITEM_COLUMNS = (
 
 # The fields of each nested entry the app reads, kept in the JSON columns.
 SOCKET_ENTRY_FIELDS = ('singleInitialItemHash', 'randomizedPlugSetHash', 'reusablePlugSetHash')
+INLINE_PLUG_FIELDS = ('plugItemHash',)
 INVESTMENT_STAT_FIELDS = ('statTypeHash', 'value')
 PLUG_SET_ITEM_FIELDS = ('plugItemHash', 'currentlyCanRoll')
 SET_PERK_FIELDS = ('requiredSetCount', 'sandboxPerkHash')
@@ -57,12 +59,30 @@ def trimmed(entries, fields) -> str:
     return json.dumps([{k: e[k] for k in fields if k in e} for e in entries or []])
 
 
+def trimmed_sockets(entries) -> str:
+    # Socket entries as a JSON array, each keeping SOCKET_ENTRY_FIELDS (the
+    # ones it has). A socket that names neither plug set also keeps its inline
+    # reusablePlugItems (INLINE_PLUG_FIELDS): they are its only list of
+    # options, as for most weapons' origin traits.
+    rows = []
+    for entry in entries or []:
+        row = {k: entry[k] for k in SOCKET_ENTRY_FIELDS if k in entry}
+        names_set = entry.get('randomizedPlugSetHash') or entry.get('reusablePlugSetHash')
+        if entry.get('reusablePlugItems') and not names_set:
+            row['reusablePlugItems'] = [
+                {k: plug[k] for k in INLINE_PLUG_FIELDS if k in plug}
+                for plug in entry['reusablePlugItems']
+            ]
+        rows.append(row)
+    return json.dumps(rows)
+
+
 def item_row(obj) -> tuple:
     # A DestinyInventoryItemDefinition row (ITEM_COLUMNS): the fields the app
     # reads, as the manifest has them. plugCategoryIdentifier is '' for a plug
     # without one and NULL for an item that isn't a plug. socketEntries is
-    # kept for weapons and armor and investmentStats for plugs, the only ones
-    # the app reads; each is [] otherwise.
+    # kept for weapons and armor (trimmed_sockets) and investmentStats for
+    # plugs, the only ones the app reads; each is [] otherwise.
     props = obj.get('displayProperties') or {}
     inventory = obj.get('inventory') or {}
     plug = obj.get('plug')
@@ -97,7 +117,7 @@ def item_row(obj) -> tuple:
         obj.get('collectibleHash'),
         trait_ids,
         category,
-        trimmed(socket_entries, SOCKET_ENTRY_FIELDS),
+        trimmed_sockets(socket_entries),
         trimmed(investment_stats, INVESTMENT_STAT_FIELDS),
     )
 
@@ -146,6 +166,10 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             (o['hash'], o.get('classType'), (o.get('displayProperties') or {}).get('name'))
             for o in definitions(mconn, 'DestinyClassDefinition')
         ]
+        mode_rows = []
+        for o in definitions(mconn, 'DestinyActivityModeDefinition'):
+            props = o.get('displayProperties') or {}
+            mode_rows.append((o['hash'], o.get('modeType'), props.get('name'), props.get('icon')))
         set_rows, perk_hashes = [], set()
         for o in definitions(mconn, 'DestinyEquipableItemSetDefinition'):
             perks = o.get('setPerks') or []
@@ -256,6 +280,9 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
         upsert(conn, 'DestinyBreakerTypeDefinition', ('hash', 'name', 'icon'), breaker_rows)
         upsert(conn, 'DestinyStatDefinition', ('hash', 'name', 'icon'), stat_rows)
         upsert(conn, 'DestinyClassDefinition', ('hash', 'classType', 'name'), class_rows)
+        upsert(
+            conn, 'DestinyActivityModeDefinition', ('hash', 'modeType', 'name', 'icon'), mode_rows
+        )
         upsert(conn, 'DestinyEquipableItemSetDefinition', ('hash', 'name', 'setPerks'), set_rows)
         upsert(
             conn,

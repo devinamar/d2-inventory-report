@@ -396,6 +396,18 @@ def add_plug_set(conn, item_hash, socket_idx, set_hash, plugs, key='randomizedPl
         )
 
 
+def add_inline_plugs(conn, item_hash, socket_idx, plugs):
+    # The inline plug list (reusablePlugItems) of the definition's socket
+    # socket_idx, as a socket naming no plug set keeps it.
+    with conn:
+        conn.execute(
+            "UPDATE DestinyInventoryItemDefinition "
+            f"SET socketEntries = json_set(socketEntries, '$[{socket_idx}].reusablePlugItems', "
+            "json(?)) WHERE hash = ?",
+            (json.dumps([{'plugItemHash': h} for h in plugs]), item_hash),
+        )
+
+
 def add_armor_def(
     conn,
     item_hash,

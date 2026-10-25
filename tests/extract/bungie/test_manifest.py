@@ -21,7 +21,44 @@ FATEBRINGER = {
     'defaultDamageTypeHash': 3373582085,
     'equippingBlock': {'ammoType': 1},
     'inventory': {'tierType': 5, 'bucketTypeHash': 1498876634},
-    'sockets': {'socketEntries': [{'singleInitialItemHash': 1294026524, 'reusablePlugSetHash': 1}]},
+    'sockets': {
+        'socketEntries': [
+            {
+                'singleInitialItemHash': 1294026524,
+                'reusablePlugItems': [],
+                'reusablePlugSetHash': 1,
+            },
+            {
+                'singleInitialItemHash': 1840239774,
+                'reusablePlugItems': [{'plugItemHash': 1840239774}],
+                'randomizedPlugSetHash': 2044988252,
+            },
+        ]
+    },
+}
+# Its origin socket (index 8) names no plug set: the inline list is its only
+# list of options, Problem Solver and Vanguard Determination with their
+# enhanced versions.
+MINT_RETROGRADE = {
+    'hash': 3285784871,
+    'displayProperties': {'name': 'Mint Retrograde'},
+    'itemType': 3,
+    'itemTypeDisplayName': 'Pulse Rifle',
+    'classType': 3,
+    'inventory': {'tierType': 5, 'bucketTypeHash': 1498876634},
+    'sockets': {
+        'socketEntries': [
+            {
+                'singleInitialItemHash': 3454102905,
+                'reusablePlugItems': [
+                    {'plugItemHash': 3454102905},
+                    {'plugItemHash': 3846229553},
+                    {'plugItemHash': 2223800157},
+                    {'plugItemHash': 1621842933},
+                ],
+            }
+        ]
+    },
 }
 ADAPTIVE_FRAME = {
     'hash': 1294026524,
@@ -144,6 +181,24 @@ ATHEONS_MEMORY = {
 }
 RADIOLARIA_BREACH = {'hash': 17188252, 'displayProperties': {'name': 'Radiolaria Breach'}}
 COLLECTIVE_POWER = {'hash': 17188253, 'displayProperties': {'name': 'Collective Power'}}
+# The activity modes whose icons badge each side of perk popularity.
+ICONS = '/common/destiny2_content/icons/'
+RAID = {
+    'hash': 2043403989,
+    'modeType': 4,
+    'displayProperties': {
+        'name': 'Raid',
+        'icon': ICONS + 'DestinyActivityModeDefinition_bfe80e3dafe6686a9dc42df0606bdc9b.png',
+    },
+}
+TRIALS = {
+    'hash': 1673724806,
+    'modeType': 84,
+    'displayProperties': {
+        'name': 'Trials of Osiris',
+        'icon': ICONS + 'DestinyActivityModeDefinition_e35792b49b249ca5dcdb1e7657ca42b6.png',
+    },
+}
 
 # The manifest's tables the copy reads, each holding its definitions.
 DEFINITIONS = {
@@ -153,9 +208,11 @@ DEFINITIONS = {
     'DestinyBreakerTypeDefinition': [],
     'DestinyStatDefinition': [],
     'DestinyClassDefinition': [],
+    'DestinyActivityModeDefinition': [RAID, TRIALS],
     'DestinyEquipableItemSetDefinition': [ATHEONS_MEMORY],
     'DestinyInventoryItemDefinition': [
         FATEBRINGER,
+        MINT_RETROGRADE,
         ADAPTIVE_FRAME,
         SPACEWALK_CLOAK,
         DEFAULT_SHADER,
@@ -209,6 +266,7 @@ def test_weapons_armor_plugs_and_gunsmith_orders_are_copied_and_the_rest_skipped
     names = {r['name'] for r in db.execute('SELECT name FROM DestinyInventoryItemDefinition')}
     assert names == {
         'Fatebringer (Timelost)',
+        'Mint Retrograde',
         'Adaptive Frame',
         'Spacewalk Cloak',
         'Default Shader',
@@ -250,7 +308,8 @@ def test_a_weapon_keeps_its_sockets_and_a_plug_its_stats_in_its_own_row(db, mani
     assert manifest.ingest_manifest(db, manifest_path, VERSION)
     item = 'DestinyInventoryItemDefinition'
     assert json_column(db, item, 'socketEntries', 4219826183) == [
-        {'singleInitialItemHash': 1294026524, 'reusablePlugSetHash': 1}
+        {'singleInitialItemHash': 1294026524, 'reusablePlugSetHash': 1},
+        {'singleInitialItemHash': 1840239774, 'randomizedPlugSetHash': 2044988252},
     ]
     assert json_column(db, item, 'investmentStats', 4219826183) == []
     assert json_column(db, item, 'investmentStats', 309000506) == [
@@ -258,6 +317,32 @@ def test_a_weapon_keeps_its_sockets_and_a_plug_its_stats_in_its_own_row(db, mani
         {'statTypeHash': 4244567218, 'value': -5},
     ]
     assert json_column(db, item, 'socketEntries', 309000506) == []
+
+
+def test_a_socket_naming_no_plug_set_keeps_its_inline_plugs(db, manifest_path):
+    # Mint Retrograde's origin socket lists its options inline, so they are
+    # kept; Fatebringer's sockets name plug sets, so their inline lists go.
+    assert manifest.ingest_manifest(db, manifest_path, VERSION)
+    assert json_column(db, 'DestinyInventoryItemDefinition', 'socketEntries', 3285784871) == [
+        {
+            'singleInitialItemHash': 3454102905,
+            'reusablePlugItems': [
+                {'plugItemHash': 3454102905},
+                {'plugItemHash': 3846229553},
+                {'plugItemHash': 2223800157},
+                {'plugItemHash': 1621842933},
+            ],
+        }
+    ]
+
+
+def test_the_activity_modes_are_copied_with_their_icons(db, manifest_path):
+    assert manifest.ingest_manifest(db, manifest_path, VERSION)
+    rows = db.execute('SELECT * FROM DestinyActivityModeDefinition ORDER BY modeType').fetchall()
+    assert [tuple(r) for r in rows] == [
+        (m['hash'], m['modeType'], m['displayProperties']['name'], m['displayProperties']['icon'])
+        for m in (RAID, TRIALS)
+    ]
 
 
 def test_an_armor_set_keeps_its_bonuses_and_their_perks_are_copied(db, manifest_path):
