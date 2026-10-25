@@ -35,3 +35,19 @@ def test_pairs_split_into_their_traits_with_each_traits_partners(conn):
         ('Gun', 'Rampage', 'Firefly', 2, 0.6, 0.375, 1.0, 2, 1),
         ('Gun', 'Kill Clip', 'Outlaw', 3, 0.4, 1.0, 0.2857, 1, 2),
     ]
+
+
+def test_a_pair_the_file_rounds_to_nothing_has_ratios_of_0(conn):
+    # Its first trait runs only with it, so that trait's shares add up to 0.
+    c.add_popularity(
+        conn,
+        'Gun',
+        [100],
+        columns=[
+            c.popularity_column('traits', [('Rampage + Outlaw', 1.0), ('Kill Clip + Outlaw', 0.0)])
+        ],
+    )
+    row = conn.execute(
+        "SELECT rel, trait1_cond, trait2_cond FROM v_popularity_pair WHERE trait1 = 'Kill Clip'"
+    ).fetchone()
+    assert tuple(row) == (0.0, 0, 0.0)
