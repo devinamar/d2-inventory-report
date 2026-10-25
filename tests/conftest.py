@@ -595,6 +595,87 @@ def add_preference(conn, name, grade, rank=0, stats=()):
         )
 
 
+# d2-perk-popularity's scores, written the way extract/perk_popularity.py
+# stores the published file.
+
+
+def popularity_column(kind, perks, n_eff=50.0):
+    # One published column: its kind, its perks [(name, share)] most picked
+    # first ('A + B' for a trait pair), and n_eff with the confidence it grades
+    # to. Each perk's 95% range is its share 0.05 either way.
+    confidence = 'very low'
+    if n_eff >= 100:
+        confidence = 'high'
+    elif n_eff >= 30:
+        confidence = 'medium'
+    elif n_eff >= 10:
+        confidence = 'low'
+    return {
+        'kind': kind,
+        'n_eff': n_eff,
+        'confidence': confidence,
+        'perks': [
+            {'perk': name, 'share': share, 'low': share - 0.05, 'high': share + 0.05}
+            for name, share in perks
+        ],
+    }
+
+
+def add_popularity(
+    conn,
+    name,
+    item_hashes,
+    side='pve',
+    family=None,
+    rank=1,
+    players=100,
+    hard_copies=0,
+    columns=(),
+):
+    # A weapon scored on one side: its versions, rank and voting copies
+    # (hard_copies of them from hard content, as many effective votes), and
+    # its published columns (popularity_column). family defaults to the name.
+    groups = {
+        'hard': {'copies': hard_copies, 'n_eff': float(hard_copies)},
+        'normal': {'copies': players - hard_copies, 'n_eff': float(players - hard_copies)},
+    }
+    with conn:
+        conn.execute(
+            "INSERT INTO perk_popularity_weapon (side, name, family, type, item_hash, "
+            "item_hashes, rank, players, active_players, hard, hard_weight, last_seen, stale, "
+            "groups, columns) VALUES (?, ?, ?, 'Auto Rifle', ?, ?, ?, ?, ?, 0, 0.5, "
+            "'2026-10-23T22:00:00Z', 0, ?, ?)",
+            (
+                side,
+                name,
+                family or name,
+                item_hashes[0],
+                json.dumps(list(item_hashes)),
+                rank,
+                players,
+                players,
+                json.dumps(groups),
+                json.dumps(list(columns)),
+            ),
+        )
+
+
+def add_popularity_file(conn, categories):
+    # The published file's categories [(key, label, side, hard)], in order.
+    with conn:
+        conn.execute(
+            "INSERT INTO perk_popularity_file VALUES ('2026-10-25T15:23:40Z', '{}', ?)",
+            (
+                json.dumps(
+                    [
+                        {'key': k, 'label': label, 'side': side, 'weight': 1, 'hard': hard}
+                        for k, label, side, hard in categories
+                    ]
+                ),
+            ),
+        )
+
+
 def make_profile(
     vault=(),
     equipped=(),
