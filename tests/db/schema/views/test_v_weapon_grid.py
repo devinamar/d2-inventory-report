@@ -128,6 +128,41 @@ def test_a_perk_another_pool_of_the_family_was_seen_with_stays(conn):
     ]
 
 
+def test_a_perk_only_the_sets_later_block_lists_hides_on_fewer_votes(conn):
+    # Each gun's barrel set lists Hammer-Forged Rifling and Fluted Barrel,
+    # their enhanced copies, then Full Choke and its enhanced copy, as
+    # Adamantite's lists a shotgun's barrels after its own. Gun's 50 barrel
+    # votes saw only Hammer-Forged Rifling: too few to drop Fluted Barrel, but
+    # enough for Full Choke. Rifle, with 20 votes, keeps all three.
+    with conn:
+        conn.executemany(
+            "INSERT INTO DestinyInventoryItemDefinition "
+            "(hash, name, description, icon, plugCategoryIdentifier, investmentStats) "
+            "VALUES (?, ?, '', '', 'barrels', '[]')",
+            [
+                (2101, 'Hammer-Forged Rifling'),
+                (2102, 'Fluted Barrel'),
+                (2003, 'Full Choke'),
+                (2103, 'Full Choke'),
+            ],
+        )
+    for item_hash, name, votes in ((100, 'Gun', 50.0), (200, 'Rifle', 20.0)):
+        c.add_weapon_def(conn, item_hash, name=name, sockets=[c.INTRINSIC_ADAPTIVE, None])
+        barrels = (c.BARREL_PERK_X, c.BARREL_PERK_Y, 2101, 2102, 2003, 2103)
+        c.add_plug_set(conn, item_hash, 1, item_hash * 10 + 1, [(h, 1) for h in barrels])
+        seen = [('Hammer-Forged Rifling', 1.0)]
+        c.add_popularity(
+            conn, name, [item_hash], columns=[c.popularity_column('barrel', seen, n_eff=votes)]
+        )
+    assert grid(conn, 'grid_id', 'perk') == [
+        (100, 'Hammer-Forged Rifling'),
+        (100, 'Fluted Barrel'),
+        (200, 'Hammer-Forged Rifling'),
+        (200, 'Fluted Barrel'),
+        (200, 'Full Choke'),
+    ]
+
+
 def test_a_card_no_scored_weapon_lists_gets_a_grid_of_its_own(conn):
     # Rifle isn't scored: its grid is its pool, named after its version, with
     # no scores on either side.

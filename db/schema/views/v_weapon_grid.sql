@@ -4,9 +4,11 @@
 -- can roll (v_weapon_pool), the perks d2-perk-popularity saw in its columns
 -- (a column the pool doesn't list, like an origin trait every weapon got),
 -- and its copies' perks; own is 1 for a perk only a copy has. A non-trait
--- perk the pool lists is dropped when the family has popularity_rule's
--- seen_votes in that column and none of its copies was seen with it: the
--- manifest lists barrels and magazines that never drop on a weapon. col is the
+-- perk the pool lists is dropped when none of the family's copies was seen
+-- with it and the family has popularity_rule's seen_votes in that column, or
+-- late_votes for a perk every version's set lists only after its enhanced
+-- copies begin (its first repeated perk): the manifest lists barrels and
+-- magazines that never drop on a weapon, most of them there. col is the
 -- column's key (v_weapon_pool's), col_order its first socket and label what
 -- the weapon calls it. lists gives the places (1 first, in wishlist_preference's
 -- order) of the wishlists whose rolls for the grid's versions name the perk,
@@ -16,8 +18,9 @@
 -- (the perk's place in its column: by share, then the game's order), and quiet
 -- (a trait below popularity_rule's quiet_rel of its column's top and not in
 -- the side's top five pairs).
--- ponytail: one seen_votes cutoff for every column, so a real perk under
--- about 1% of a family's votes can hide too; raise it if one goes missing.
+-- ponytail: two vote cutoffs for every column, so a real perk under about 1%
+-- of a family's votes can hide too, and a later-block perk under about 5%
+-- (some magazine sets roll theirs); raise them if one goes missing.
 CREATE VIEW v_weapon_grid AS
 WITH grid AS MATERIALIZED (
     SELECT DISTINCT grid_id, name AS entry, family FROM v_popularity_version
@@ -38,12 +41,26 @@ seen AS MATERIALIZED (
     FROM voted p
     JOIN (SELECT DISTINCT name, family FROM v_popularity_version) v ON v.name = p.name
 ),
-pool AS (
-    SELECT v.grid_id, p.col, p.perk, MIN(p.position) AS position, MIN(p.socket_idx) AS socket_idx
+entry AS (
+    SELECT v.grid_id, p.item_hash, p.socket_idx, p.col, p.perk, p.position,
+           ROW_NUMBER() OVER (
+               PARTITION BY p.item_hash, p.socket_idx, p.perk ORDER BY p.position
+           ) AS nth
     FROM version v
     JOIN v_weapon_pool p ON p.item_hash = v.item_hash
     WHERE p.can_roll AND p.kind != 'intrinsic'
-    GROUP BY v.grid_id, p.col, p.perk
+),
+pool AS (
+    SELECT grid_id, col, perk, MIN(position) AS position, MIN(socket_idx) AS socket_idx,
+           MIN(late) AS late
+    FROM (
+        SELECT grid_id, col, perk, position, socket_idx, nth,
+               COALESCE(position > MIN(CASE WHEN nth = 2 THEN position END)
+                                       OVER (PARTITION BY item_hash, socket_idx), 0) AS late
+        FROM entry
+    )
+    WHERE nth = 1
+    GROUP BY grid_id, col, perk
 ),
 kept AS (
     SELECT po.grid_id, po.col, po.perk, po.position, po.socket_idx
@@ -52,7 +69,8 @@ kept AS (
     CROSS JOIN popularity_rule r
     LEFT JOIN v_popularity_family f ON f.family = g.family AND f.col = po.col
     LEFT JOIN seen s ON s.family = g.family AND s.col = po.col AND s.perk = po.perk
-    WHERE po.col LIKE 'trait%' OR COALESCE(f.votes, 0) < r.seen_votes OR s.perk IS NOT NULL
+    WHERE po.col LIKE 'trait%' OR s.perk IS NOT NULL
+       OR COALESCE(f.votes, 0) < CASE WHEN po.late THEN r.late_votes ELSE r.seen_votes END
 ),
 owned AS (
     SELECT c.grid_id, k.col, k.perk, MIN(k.socket_idx) AS socket_idx
