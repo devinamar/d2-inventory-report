@@ -10,7 +10,8 @@
 -- and same, which says whether every column has the same votes; all are NULL
 -- for a weapon with no scored columns (a fixed roll). margin is its shares'
 -- margin of error: half the widest 95% range among its perks' shares
--- (v_popularity_perk), NULL for a fixed roll.
+-- (v_popularity_perk), its origin traits' only when it has no other perks,
+-- as its weakest column leaves the origin out; NULL for a fixed roll.
 CREATE VIEW v_popularity_weapon AS
 WITH weapon AS (
     SELECT w.*,
@@ -35,5 +36,9 @@ JOIN (SELECT DISTINCT name, grid_id FROM v_popularity_version) v ON v.name = w.n
 CROSS JOIN popularity_rule r
 LEFT JOIN v_popularity_column c ON c.side = w.side AND c.name = w.name AND c.weakest
 LEFT JOIN (
-    SELECT side, name, MAX((high - low) / 2) AS margin FROM v_popularity_perk GROUP BY side, name
+    SELECT side, name,
+           COALESCE(MAX(CASE WHEN col != 'origin' THEN (high - low) / 2 END),
+                    MAX((high - low) / 2)) AS margin
+    FROM v_popularity_perk
+    GROUP BY side, name
 ) m ON m.side = w.side AND m.name = w.name;

@@ -71,3 +71,29 @@ def test_the_weakest_column_has_the_fewest_votes_and_ties_go_to_trait1(conn):
         ('Gun', 'magazine', 'low', 25, 'Tactical Mag', 0.4, 0),
         ('Rifle', 'trait1', 'medium', 50, 'Rampage', 0.7, 1),
     ]
+
+
+def test_a_thin_origin_column_isnt_the_weakest_unless_its_the_only_one(conn):
+    # Few of Shotgun's copies have its origin trait, as on Belisarius-D: its
+    # columns that count tie at medium, so same holds. Relic has only an
+    # origin column, which is then its weakest.
+    c.add_popularity(
+        conn,
+        'Shotgun',
+        [100],
+        columns=[
+            c.popularity_column('barrel', [('Smallbore', 0.6)], n_eff=33.0),
+            c.popularity_column('trait1', [('Rampage', 0.7)], n_eff=33.0),
+            c.popularity_column('origin', [('Hakke Breach Armaments', 1.0)], n_eff=1.0),
+        ],
+    )
+    c.add_popularity(
+        conn, 'Relic', [200], columns=[c.popularity_column('origin', [('Nadir Focus', 1.0)])]
+    )
+    rows = conn.execute(
+        "SELECT name, col, confidence, same FROM v_popularity_column WHERE weakest ORDER BY name"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [
+        ('Relic', 'origin', 'medium', None),
+        ('Shotgun', 'trait1', 'medium', 1),
+    ]

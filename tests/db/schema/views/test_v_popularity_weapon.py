@@ -59,3 +59,14 @@ def test_a_weapons_margin_is_half_its_widest_share_range(conn):
         "SELECT name, round(margin, 4) FROM v_popularity_weapon ORDER BY rank"
     ).fetchall()
     assert [tuple(r) for r in rows] == [('Gun', 0.2), ('Fixed', None)]
+
+
+def test_a_thin_origin_columns_range_doesnt_set_the_margin(conn):
+    # Shotgun's one-copy origin trait ranges from 10% to 90%; its barrel's
+    # range, 55% to 65%, sets the margin.
+    barrel = c.popularity_column('barrel', [('Smallbore', 0.6)], n_eff=33.0)
+    origin = c.popularity_column('origin', [('Hakke Breach Armaments', 0.5)], n_eff=1.0)
+    origin['perks'][0].update(low=0.1, high=0.9)
+    c.add_popularity(conn, 'Shotgun', [100], columns=[barrel, origin])
+    row = conn.execute("SELECT round(margin, 4) FROM v_popularity_weapon").fetchone()
+    assert tuple(row) == (0.05,)
