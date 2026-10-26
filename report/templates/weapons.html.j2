@@ -2,13 +2,16 @@
 {% import 'macros.html.j2' as m with context %}
 {% import 'text.j2' as t with context %}
 
-{# A flagged copy's tile: its name and reason, type and id, and the copy kept in its place. #}
+{# A flagged copy's tile: its name and reason, type and id, and the copy kept in its place, with a button that opens the keeper's card in Roll Quality (report.js). #}
 {% macro flag_tile(w) %}
 <div class="tile purge">
 <div class="tile-top"><span class="name">{{ w.name }}</span><span class="chip">{{ weapon_reasons[w.reason] }}</span></div>
 <span class="tuning">{{ w.wtype }} · …{{ w.instance_id[-6:] }}</span>
 {% if w.keeper_id %}
 <span class="note">kept in its place: …{{ w.keeper_id[-6:] }}</span>
+{% endif %}
+{% if w.grid_id %}
+<button type="button" class="goto" data-goto="{{ w.grid_id }}" data-k="{{ w.keeper_k }}">My Copies</button>
 {% endif %}
 </div>
 {% endmacro %}
@@ -25,7 +28,7 @@
 {# The wishlist switch values a picker line answers: the keys of lists, and * (All lists) when all is true; hidden at first without it. #}
 {% macro shows(keys, all) %}{% set values = (['*'] if all else []) + keys %} data-wl="{{ values|join(' ') }}"{% if not all %} hidden{% endif %}{% endmacro %}
 
-{# A copy's entry in its card's picker: its icon with its gear tier and masterwork overlays; for each side its place on the card and its popularity score, in its heat (data-r holds both places, which report.js orders the entries by); its id, lock and DIM tag; its version's name when it isn't the family's, and its element, rounds per minute, season and drop source when the card's copies differ in them; the lists with a roll it completes (No wishlist match, or Missing wishlist entries where the lists shown have no rolls for the weapon) and the lists that trash it, each line answering the wishlist switch; its kill count and DIM note. The corner button copies its id. #}
+{# A copy's entry in its card's picker: its icon with its gear tier and masterwork overlays; for each side its place on the card and its popularity score, in its heat (data-r holds both places, which report.js orders the entries by), its lock and DIM tag; its id on a line of its own; its version's name when it isn't the family's, and its element, rounds per minute, season and drop source when the card's copies differ in them; the lists with a roll it completes (No wishlist match, or Missing wishlist entries where the lists shown have no rolls for the weapon) and the lists that trash it, each line answering the wishlist switch; its kill count and DIM note. The corner button copies its id. #}
 {% macro pick(c) %}
 {% set covered = c.covered.split() %}
 {% set matched = c.matched.split() %}
@@ -36,7 +39,8 @@
 <button type="button" class="pr-select" role="radio" aria-checked="false">
 <span class="wicon" role="img" aria-label="{% if c.gear_tier %}Gear tier {{ c.gear_tier }}{% else %}No gear tier{% endif %}{% if c.is_masterworked %}, masterworked{% endif %}">{% for src in (c.icon, c.watermark, c.tier_overlay, c.masterwork_overlay) if src %}<img src="{{ src }}" alt="" loading="lazy">{% endfor %}</span>
 <span class="pr-text">
-<span class="pr-line">{% for side in ('pve', 'pvp') %}<span class="copy-n on-{{ side }}{% if c[side ~ '_rank'] == 1 %} keep{% endif %}">#{{ c[side ~ '_rank'] }}</span>{% if c[side ~ '_score'] is not none %}<span class="pr-pop on-{{ side }} c{{ c[side ~ '_heat'] }}">{{ (c[side ~ '_score'] * 100)|round|int }}%</span>{% endif %}{% endfor %}<span class="pr-id">{{ c.instance_id }}</span>{% if c.is_locked %}{{ m.icon('locked', 'Locked') }}{% endif %}{% if c.tag %}{{ m.icon(c.tag, 'DIM tag: ' ~ c.tag) }}{% endif %}</span>
+<span class="pr-line">{% for side in ('pve', 'pvp') %}<span class="copy-n on-{{ side }}{% if c[side ~ '_rank'] == 1 %} keep{% endif %}">#{{ c[side ~ '_rank'] }}</span>{% if c[side ~ '_score'] is not none %}<span class="pr-pop on-{{ side }} c{{ c[side ~ '_heat'] }}">{{ (c[side ~ '_score'] * 100)|round|int }}%</span>{% endif %}{% endfor %}{% if c.is_locked %}{{ m.icon('locked', 'Locked') }}{% endif %}{% if c.tag %}{{ m.icon(c.tag, 'DIM tag: ' ~ c.tag) }}{% endif %}</span>
+<span class="pr-id">{{ c.instance_id }}</span>
 {% if c.name != c.family %}
 <span class="version">{{ c.name }}</span>
 {% endif %}
@@ -183,8 +187,7 @@
 {% endif %}
 <div class="switch mini side" role="group" aria-label="{{ card }}: popularity side">{% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) %}<button type="button" class="side-{{ side }}" data-value="{{ side }}" aria-pressed="{{ (side == 'pve')|lower }}">{{ label }} <span class="num">{% if first[side ~ '_weapon_rank'] %}#{{ first[side ~ '_weapon_rank'] }}{% else %}—{% endif %}</span></button>{% endfor %}</div>
 <span class="copy-count">{{ copies|length }} cop{% if copies|length == 1 %}y{% else %}ies{% endif %}</span>
-<a class="lgg" href="https://www.light.gg/db/items/{{ first.item_hash }}/" target="_blank" rel="noopener">light.gg</a>
-{{ m.dim_button(copies, 'Copy IDs') }}
+<div class="fam-actions">
 {% for side, label in (('pve', 'PvE'), ('pvp', 'PvP')) %}
 {% if first[side ~ '_confidence'] %}
 {{ m.confidence_chip(first[side ~ '_confidence'], side, first.grid_id, 'on-' ~ side) }}
@@ -192,6 +195,11 @@
 <span class="pop-chip on-{{ side }}">No {{ label }} scores</span>
 {% endif %}
 {% endfor %}
+<div class="fam-links">
+<a class="lgg" href="https://www.light.gg/db/items/{{ first.item_hash }}/" target="_blank" rel="noopener">light.gg</a>
+{{ m.dim_button(copies, 'Copy IDs') }}
+</div>
+</div>
 </header>
 <div class="fam-body" id="fam-{{ first.grid_id }}" hidden>
 <div class="rp">

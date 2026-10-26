@@ -104,8 +104,10 @@ h3 { margin: 0; font: 700 22px/1.15 var(--head); color: var(--ink-hi); }
 .switch button { font-weight: 600; font-size: 15px; min-height: 44px; padding: 0 18px; border-radius: 22px; border: 1px solid var(--line-hi); background: transparent; color: var(--ink-mid); cursor: pointer; }
 .switch button .num { font-weight: 400; color: var(--muted); }
 .switch button[aria-pressed="true"] { border-color: var(--keep); background: var(--keep-fill); color: var(--ink-hi); }
-.dim, .lgg { min-height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--keep-line); background: transparent; color: var(--keep); font-size: 14px; font-weight: 600; cursor: pointer; }
-.dim:hover, .lgg:hover { background: var(--keep-fill); }
+.dim, .lgg, .goto { min-height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--keep-line); background: transparent; color: var(--keep); font-size: 14px; font-weight: 600; cursor: pointer; }
+.dim:hover, .lgg:hover, .goto:hover { background: var(--keep-fill); }
+/* A flagged copy's My Copies, under its tile's text. */
+.tile .goto { align-self: flex-start; margin-top: 6px; }
 /* A purge query's button, in the Purge badge's yellow. */
 .dim.purge { border-color: var(--purge-line); color: var(--purge); }
 .dim.purge:hover { background: color-mix(in srgb, var(--purge) 14%, var(--card)); }
@@ -191,19 +193,27 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .wicon img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .switch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .switch + .switch { padding-left: 14px; border-left: 1px solid var(--line); }
-.fam { overflow: visible; }
+/* A card scrolls in below the sticky header; one My Copies lands on is
+   outlined in cyan for a moment. */
+.fam { overflow: visible; scroll-margin-top: 80px; }
+.fam.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { from { box-shadow: 0 0 0 2px var(--keep); } to { box-shadow: 0 0 0 2px transparent; } }
 .fams { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 20px; }
 .fam-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; }
 .fam-head h5 { margin: 0; font: 700 26px/1.15 var(--head); color: var(--ink-hi); }
-.fam-head .lgg { margin-left: auto; }
+/* A card's confidence chip at the top right, light.gg and Copy IDs under it,
+   so they take one narrow column of the header's row. */
+.fam-actions { margin-left: auto; align-self: flex-start; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.fam-links { display: flex; gap: 12px; }
 /* A closed card shows its copy count; an open one shows the copies. */
 .fam-head .copy-count { font: 14px var(--mono); color: var(--muted); }
 .fam-head:has(.toggle[aria-expanded="true"]) .copy-count { display: none; }
 /* A card's name: its family's with the ammo badge, then its pool, season and
-   drop source under it; then its element, frame and rounds per minute,
-   stacked. */
+   drop source under it, the source wrapping within 200px so a long one
+   doesn't push the header's buttons and chip onto a second row; then its
+   element, frame and rounds per minute, stacked. */
 .fam-name { display: flex; flex-direction: column; gap: 4px; }
-.fam-name .origin { font: 400 13px/1.4 var(--body); }
+.fam-name .origin { max-width: 200px; font: 400 13px/1.4 var(--body); }
 .fam-title { display: inline-flex; align-items: center; gap: 10px; }
 .ammo { width: auto; height: 18px; flex: none; }
 .fam-stats { display: flex; flex-direction: column; gap: 4px; }
@@ -218,7 +228,7 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
    the copy completes), dashed for one a roll only names. A list's colours
    come from the generated l<places> rules: --ring, its border colours, and
    --tint for the fill and its wishlist dot. */
-.perk { display: inline-flex; flex: none; border-radius: 50%; border: 2px solid var(--ring, var(--line)); }
+.perk { display: inline-flex; flex: none; border-radius: 50%; border: 2px solid; border-color: var(--ring, var(--line)); }
 .perk.pick, .perk.hit { background: color-mix(in srgb, var(--tint) 14%, var(--card)); }
 .perk.named { border-style: dashed; }
 .wl-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--tint); }
@@ -226,17 +236,15 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 /* A weapon card's name block: its toggle, then the Endgame badges under the
    season and source, in line with the name (chevron 16 + gap 12 + icon 48 +
    gap 12). Its own PvE/PvP switch is the report's switch, smaller, each
-   side's rank on its button; its confidence chip sits at the top right. */
+   side's rank on its button. */
 .fam-id { display: flex; flex-direction: column; gap: 6px; }
 .fam-id .endgame { margin-left: 88px; }
 .switch.mini { gap: 4px; }
 .switch.mini button { min-height: 30px; padding: 0 12px; font-size: 13px; }
 .switch.mini button .num { font-size: 12px; }
-.fam-head > .pop-chip { align-self: flex-start; }
-/* The grid's details line in a card leaves out light.gg: the header has it. */
-.fam .pop-meta .lgg { display: none; }
-/* A card's body: the picker on the left, the perk grid on the right. */
-.rp { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; padding-top: 16px; }
+/* A card's body: the picker on the left, narrow enough that a five-column
+   perk grid fits beside it without scrolling, the perk grid on the right. */
+.rp { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; padding-top: 16px; }
 @media (max-width: 900px) { .rp { grid-template-columns: minmax(0, 1fr); } }
 .rp-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 /* The picker: an entry per copy, best by popularity first, the copy shown
@@ -407,7 +415,7 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
     --wl4: color-mix(in oklab, var(--violet) 55%, var(--card));
     position: relative; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 3px 8px 3px 5px; border: 1px solid transparent; border-left: 5px solid var(--heat); border-radius: 6px; background: color-mix(in oklab, var(--heat) 22%, var(--card)); cursor: default;
 }
-.pk::before { content: ''; flex: none; width: 28px; height: 28px; box-sizing: border-box; border: 2px solid var(--ring, var(--line)); border-radius: 50%; background: var(--i) center / 20px no-repeat; }
+.pk::before { content: ''; flex: none; width: 28px; height: 28px; box-sizing: border-box; border: 2px solid; border-color: var(--ring, var(--line)); border-radius: 50%; background: var(--i) center / 20px no-repeat; }
 .pk.pick::before, .pk.hit::before { background-color: color-mix(in srgb, var(--tint) 14%, var(--card)); }
 .pk.named::before { border-style: dashed; }
 .pk > span { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 12.5px; line-height: 1.15; color: var(--ink-mid); }
@@ -424,9 +432,9 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 [data-side="pvp"] .pk { --heat: var(--hb); }
 /* A trait that matters on neither count recedes: not among the side's five
    most picked pairs, below 30% of its column's top, not the copy's and not
-   wishlisted. */
-[data-side="pve"] .pk.qa:not(.owned, .named, .hit, .focus, .partner),
-[data-side="pvp"] .pk.qb:not(.owned, .named, .hit, .focus, .partner) { opacity: 0.5; }
+   wishlisted; a focused trait's dimming (dim) takes over from it. */
+[data-side="pve"] .pk.qa:not(.owned, .named, .hit, .focus, .partner, .dim),
+[data-side="pvp"] .pk.qb:not(.owned, .named, .hit, .focus, .partner, .dim) { opacity: 0.5; }
 .pk.qa:hover, .pk.qb:hover, .pk.qa:focus-visible, .pk.qb:focus-visible { opacity: 1; }
 /* The copy shown on a weapon card: its perks outlined twice in their heat,
    like the pair lines, over a strong heat fill; the perks it lacks step back
@@ -442,10 +450,11 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .pc[data-col^="trait"] .pk { cursor: pointer; }
 .pk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* A focused trait and its partners are outlined in their heat, the colour of
-   their pair lines; a partner shows its share of the focused trait's rolls. */
+   their pair lines; a partner shows the pair's share of all the weapon's
+   pairs, in bold. */
 .pk.focus { border-color: var(--heat); box-shadow: 0 0 0 1px var(--heat); opacity: 1; }
 .pk.partner { border-color: var(--heat); opacity: 1; }
-.pk.partner::after, .pg.has-copy .pk.partner::after { content: attr(data-f); color: var(--heat); }
+.pk.partner::after, .pg.has-copy .pk.partner::after { content: attr(data-f); color: var(--heat); font-weight: 800; }
 .pk.dim { opacity: 0.22; }
 .pl.soft { opacity: 0.5; }
 @media (prefers-reduced-motion: no-preference) { .pk, .pl { transition: opacity 0.15s; } }
@@ -465,9 +474,10 @@ svg.defs { position: absolute; }
 /* A grid's tooltip names each wishlist in its list's colour. */
 .tip p.named:has(.wl-name) { color: var(--ink-mid); }
 .tip .wl-name { color: var(--tint); font-weight: 600; }
-.pop-meta { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 0; font-size: 13px; color: var(--muted); }
+/* A grid's details line in two columns, filled row by row: hard content above
+   normal content, the margin of error above last observed. */
+.pop-meta { display: grid; grid-template-columns: auto auto; justify-content: start; gap: 6px 24px; margin: 0; font-size: 13px; color: var(--muted); }
 .pop-meta b { color: var(--ink-mid); font-weight: 600; }
-.pop-meta .lgg { margin-left: auto; }
 
 /* The grids' legend */
 .legend2 { display: flex; flex-wrap: wrap; gap: 14px 36px; margin: 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; color: var(--ink-mid); }
@@ -520,7 +530,9 @@ svg.defs { position: absolute; }
 .pop-name { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pop-name h5 { margin: 0; font: 700 24px/1.1 var(--head); color: var(--ink-hi); }
 .pop-name .sub2 { font-size: 13px; color: var(--muted); }
-.pop-facts { align-self: flex-start; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 14px; font-size: 13px; color: var(--ink-mid); }
+/* A Popular row's confidence chip at the top right, light.gg and My Copies
+   under it, as on a weapon card. */
+.pop-facts { align-self: flex-start; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; color: var(--ink-mid); }
 .top-roll { display: flex; align-items: center; gap: 4px; }
 .top-roll .label { margin-right: 4px; font-size: 11px; }
 .top-roll .tp { width: 28px; height: 28px; border: 2px solid var(--heat-hi); border-radius: 50%; background: var(--i) center / 22px no-repeat; cursor: help; }

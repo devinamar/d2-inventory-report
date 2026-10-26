@@ -1,6 +1,5 @@
 {# The perk grids the weapons page and Popular open: one template per grid, which report.js clones into a Popular row or a weapons card the first time it opens. A grid holds its columns in socket order, each column's rows (m.grid_row) in PvE order, its trait pairs' lines (m.pair_path) and each side's details line; the list or card it opens in says which side shows (data-side). Then the hidden tooltip blocks (each perk's, and each scored weapon's confidence and Endgame badge per side), the wishlists' names for the tooltips, the heat gradient the legends' pair lines use, and the perk icons, the badge icons and every list mix's ring colours. #}
 {% import 'macros.html.j2' as m with context %}
-{% set columns = dict(popular_columns|group('grid_id', 'side')) %}
 {% set weapons = dict(popularity|group('grid_id', 'side')) %}
 {% set pairs = dict(grid_pairs|group('grid_id')) %}
 {% set sides = dict(popularity_sides|group('side')) %}
@@ -13,7 +12,7 @@
 <svg class="links" aria-hidden="true">{% for p in pairs.get(grid_id, []) %}{{ m.pair_path(p) }}{% endfor %}</svg>
 </div></div>
 {% for side in ('pve', 'pvp') if (grid_id, side) in weapons %}
-{{ m.meta_line(weapons[(grid_id, side)][0], columns.get((grid_id, side), [])) }}
+{{ m.meta_line(weapons[(grid_id, side)][0]) }}
 {% endfor %}
 </template>
 {% endfor %}

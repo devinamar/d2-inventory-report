@@ -99,11 +99,13 @@ ORDER BY n DESC, reason
 """
 
 # The weapon copies weapon_pruning flags (the true duplicates and any copy below
-# Legendary), by reason, then name.
+# Legendary), by reason, then name. A true duplicate's keeper is on a Roll
+# Quality card: grid_id names the card, keeper_k the keeper's place on it.
 WEAPON_FLAGS = """
-SELECT p.instance_id, p.reason, p.keeper_id, v.name, v.wtype
+SELECT p.instance_id, p.reason, p.keeper_id, v.name, v.wtype, c.grid_id, c.k AS keeper_k
 FROM weapon_pruning p
 JOIN v_weapon v ON v.instance_id = p.instance_id
+LEFT JOIN v_weapon_card c ON c.instance_id = p.keeper_id
 ORDER BY p.reason, v.name, p.instance_id
 """
 
@@ -232,7 +234,8 @@ ORDER BY copy.slot_order, copy.wtype, copy.card, pop.pve_rank
 # Every weapon d2-perk-popularity scores, per side in rank order, as the Popular
 # page lists it: its popularity there (v_popularity_weapon), its representative
 # version's looks (v_weapon_definition: icon, slot, ammo, season and source),
-# its Endgame badge on each side, how many vault copies its versions have, and
+# its Endgame badge on each side, how many vault copies its versions have,
+# card (1 when Roll Quality has a card for it: a copy left after pruning), and
 # top_perks, each scored column's most picked perk (its v_perk plug hash) in
 # socket order, space-separated.
 POPULARITY = """
@@ -241,6 +244,9 @@ WITH owned AS (
     FROM v_weapon w
     JOIN v_popularity_version v ON v.item_hash = w.item_hash
     GROUP BY v.name
+),
+card AS (
+    SELECT DISTINCT grid_id FROM v_weapon_card
 ),
 endgame AS (
     SELECT name, MAX(CASE WHEN side = 'pve' THEN endgame END) AS pve_endgame,
@@ -256,21 +262,21 @@ top AS (
     GROUP BY p.side, p.name
 )
 SELECT w.*, d.icon, d.watermark, d.slot, d.slot_order, d.ammo, d.ammo_icon, d.season_num,
-       d.season_name, d.source, COALESCE(o.owned, 0) AS owned,
+       d.season_name, d.source, COALESCE(o.owned, 0) AS owned, c.grid_id IS NOT NULL AS card,
        COALESCE(e.pve_endgame, 0) AS pve_endgame, COALESCE(e.pvp_endgame, 0) AS pvp_endgame,
        COALESCE(t.top_perks, '') AS top_perks
 FROM v_popularity_weapon w
 LEFT JOIN v_weapon_definition d ON d.item_hash = w.item_hash
 LEFT JOIN owned o ON o.name = w.name
+LEFT JOIN card c ON c.grid_id = w.grid_id
 JOIN endgame e ON e.name = w.name
 LEFT JOIN top t ON t.side = w.side AND t.name = w.name
 ORDER BY w.side, w.rank, w.name
 """
 
 # Each scored column of each weapon per side (v_popularity_column) with the
-# weapon's grid, in socket order, the weapons in Popular's order: the meta
-# line's confidence per column, and each column's most picked perk for the
-# Markdown.
+# weapon's grid, in socket order, the weapons in Popular's order: each
+# column's most picked perk for the Markdown.
 POPULAR_COLUMNS = """
 SELECT c.*, w.grid_id
 FROM v_popularity_column c
@@ -323,9 +329,8 @@ ORDER BY g.grid_id, g.col_order, g.col, g.pve_pos
 
 # Each grid's trait pairs, the scored ones and those its card's copies can
 # make, both sides' figures together for its lines and tooltips: per side the
-# pair's rank, rel and share, each trait's share with this partner (c1, c2) and
-# the partner's rank among its own (n1, n2), NULL where players weren't seen
-# with it, and its verdict: g (desired: a top three pair, or 10% of the side's
+# pair's rank, rel and share, NULL where players weren't seen with it, and its
+# verdict: g (desired: a top three pair, or 10% of the side's
 # pairs), b (undesirable: under 1% where the side's pairs have medium or high
 # confidence) or m (neither), NULL on a side without pair scores. Each trait is
 # named by its plug. copies gives the places on the card of the copies that
@@ -360,7 +365,6 @@ scored AS MATERIALIZED (
 ),
 side AS MATERIALIZED (
     SELECT p.grid_id, p.trait1, p.trait2, s.side, v.rank, v.rel, v.share,
-           v.trait1_cond AS c1, v.trait2_cond AS c2, v.trait1_n AS n1, v.trait2_n AS n2,
            CASE WHEN v.rank <= 3 OR v.share >= 0.1 THEN 'g'
                 WHEN s.sure AND COALESCE(v.share, 0) < 0.01 THEN 'b'
                 ELSE 'm' END AS verdict
@@ -387,10 +391,8 @@ wish AS MATERIALIZED (
     GROUP BY m.grid_id, m.trait1, m.trait2
 )
 SELECT p.grid_id, a.plug_hash AS a, b.plug_hash AS b,
-       e.rank AS pve_rank, e.rel AS pve_rel, e.share AS pve_share, e.c1 AS pve_c1,
-       e.c2 AS pve_c2, e.n1 AS pve_n1, e.n2 AS pve_n2, e.verdict AS pve_verdict,
-       v.rank AS pvp_rank, v.rel AS pvp_rel, v.share AS pvp_share, v.c1 AS pvp_c1,
-       v.c2 AS pvp_c2, v.n1 AS pvp_n1, v.n2 AS pvp_n2, v.verdict AS pvp_verdict,
+       e.rank AS pve_rank, e.rel AS pve_rel, e.share AS pve_share, e.verdict AS pve_verdict,
+       v.rank AS pvp_rank, v.rel AS pvp_rel, v.share AS pvp_share, v.verdict AS pvp_verdict,
        COALESCE(m.copies, '') AS copies, COALESCE(w.wanted, '') AS wanted,
        COALESCE(w.trash, '') AS trash
 FROM pair p

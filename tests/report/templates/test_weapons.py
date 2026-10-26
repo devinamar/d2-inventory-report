@@ -128,11 +128,11 @@ def test_the_picker_gives_each_copy_its_place_and_score_on_each_side(conn, tmp_p
     )
     assert (
         '<span class="copy-n on-pve keep">#1</span><span class="pr-pop on-pve c10">100%</span>'
-        '<span class="copy-n on-pvp">#2</span><span class="pr-id">w2</span>'
+        '<span class="copy-n on-pvp">#2</span></span>\n<span class="pr-id">w2</span>'
     ) in entry(page, 2)
     assert (
         '<span class="copy-n on-pve">#2</span><span class="pr-pop on-pve c4">43%</span>'
-        '<span class="copy-n on-pvp keep">#1</span><span class="pr-id">w1</span>'
+        '<span class="copy-n on-pvp keep">#1</span></span>\n<span class="pr-id">w1</span>'
     ) in entry(page, 1)
     assert '<button type="button" class="copy-btn" data-q="w1" title="Copy id w1"' in page
 
@@ -293,3 +293,15 @@ def test_copies_that_differ_in_element_each_name_theirs(conn, tmp_path):
     page = weapons_page(conn, tmp_path)
     assert '<span class="fam-stats">\n<span class="frame">' in page
     assert '>Solar</span>' in entry(page, 1) and '>Arc</span>' in entry(page, 2)
+
+
+def test_a_true_duplicate_goes_to_its_keepers_card(conn, tmp_path):
+    # w2 duplicates w1, which is kept: its tile's button opens the Test
+    # Rifle's card (named after its version, 100) at w1, now its only copy.
+    rifle_copies(conn)
+    with conn:
+        conn.execute("INSERT INTO weapon_pruning VALUES ('w2', 'exact_duplicate', 'w1')")
+    page = weapons_page(conn, tmp_path)
+    assert (
+        '<button type="button" class="goto" data-goto="100" data-k="1">My Copies</button>'
+    ) in page

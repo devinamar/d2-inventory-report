@@ -74,14 +74,14 @@ def test_a_grid_holds_its_pairs_lines_and_each_scored_sides_details(conn, tmp_pa
     # where the pairs' confidence is high. PvP has no pair scores.
     add_gun(conn)
     template = gun_grid(conn, tmp_path)
+    assert ('<path data-a="p1002" data-b="p1003" data-pve="1 1.0 0.7 g"></path>') in template
+    assert ('<path data-a="p1001" data-b="p1005" data-pve="0 0 0 b" data-c="1"></path>') in template
     assert (
-        '<path data-a="p1002" data-b="p1003" data-pve="1 1.0 0.7 1.0 1.0 1 1 g"></path>'
+        '<p class="pop-meta on-pve"><span><b>Hard content:</b> 60 copies, 60 effective votes'
+        '</span><span><b>Margin of error:</b> up to ±5 points</span>'
     ) in template
-    assert (
-        '<path data-a="p1001" data-b="p1005" data-pve="0 0 0 0 0 0 0 b" data-c="1"></path>'
-    ) in template
-    assert '<p class="pop-meta on-pve"><span><b>Confidence:</b> High in every column' in template
-    assert 'on-pvp"><span><b>Confidence' not in template
+    assert 'on-pvp"><span><b>Hard content' not in template
+    assert 'light.gg' not in template
 
 
 def test_a_copys_completed_roll_marks_its_perks_and_its_pair(conn, tmp_path):
@@ -106,6 +106,20 @@ def test_a_copys_completed_roll_marks_its_perks_and_its_pair(conn, tmp_path):
         'data-tip="p1001" data-r="2 1" data-a="30%" data-l="4" data-o="1" data-h="1:4">'
     ) in template
     assert 'data-c="1" data-w="4" data-t="1"></path>' in template
+
+
+def test_a_fixed_rolls_details_say_it_has_nothing_to_pick(conn, tmp_path):
+    # Gun is scored with no perk columns, as a fixed-roll exotic like Truth is.
+    c.add_weapon_def(conn, 100, name='Gun', sockets=[c.INTRINSIC_ADAPTIVE, None])
+    c.add_plug_set(conn, 100, 1, 901, [(c.BARREL_PERK_X, 1)])
+    c.add_popularity(conn, 'Gun', [100])
+    c.add_copy(conn, 'a', 100)
+    template = gun_grid(conn, tmp_path)
+    assert (
+        '<span><b>Margin of error:</b> None: a fixed roll, nothing to pick</span>'
+        '<span><b>Normal content:</b> 100 copies, 100 effective votes</span>'
+        '<span><b>Last observed:</b> 23 Oct 2026</span>'
+    ) in template
 
 
 def test_tooltips_cover_the_perks_and_each_scored_weapons_confidence_and_badge(conn, tmp_path):

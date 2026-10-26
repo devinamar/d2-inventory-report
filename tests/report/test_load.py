@@ -431,17 +431,17 @@ def test_a_grids_pairs_carry_both_sides_figures_and_the_copies_making_them(conn)
         'a',
         'b',
         'pve_rank',
-        'pve_c1',
+        'pve_share',
         'pve_verdict',
         'pvp_rank',
-        'pvp_n2',
+        'pvp_share',
         'pvp_verdict',
         'copies',
         'wanted',
         'trash',
     ) == [
-        (100, 1001, 1003, 1, 1.0, 'g', 1, 1, 'g', '4', '4', ''),
-        (100, 1002, 1003, 2, 1.0, 'g', 2, 2, 'g', '', '', ''),
+        (100, 1001, 1003, 1, 0.5, 'g', 1, 0.5, 'g', '4', '4', ''),
+        (100, 1002, 1003, 2, 0.3, 'g', 2, 0.3, 'g', '', '', ''),
         (100, 1002, 1004, None, None, 'b', None, None, 'b', '3', '', '4'),
     ]
 

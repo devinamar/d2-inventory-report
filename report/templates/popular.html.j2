@@ -1,4 +1,4 @@
-{# Popular: every weapon d2-perk-popularity scores, PvE or PvP (the side switch), in rank order, each row opening the weapon's perk grid (grids.html.j2) with no copy shown. The toolbar filters the rows by name, type, slot, ammo and the vault (report.js); the wishlist switch picks the list whose rings show. #}
+{# Popular: every weapon d2-perk-popularity scores, PvE or PvP (the side switch), in rank order, each row opening the weapon's perk grid (grids.html.j2) with no copy shown, and one you have a Roll Quality card for going to it (My Copies). The toolbar filters the rows by name, type, slot, ammo and the vault (report.js); the wishlist switch picks the list whose rings show. #}
 {% import 'macros.html.j2' as m with context %}
 {% import 'text.j2' as t with context %}
 {% set options = dict(popular_options|group('kind')) %}
@@ -56,7 +56,7 @@
 <span class="top-roll"><span class="label">Most picked</span>{% for h in w.top_perks.split() %}<i class="tp" data-tip="p{{ h }}"></i>{% endfor %}</span>
 {% endif %}
 </div>
-<div class="pop-facts">{{ m.confidence_chip(w.confidence, w.side, w.grid_id) }}</div>
+<div class="pop-facts">{{ m.confidence_chip(w.confidence, w.side, w.grid_id) }}<div class="fam-links"><a class="lgg" href="https://www.light.gg/db/items/{{ w.item_hash }}/" target="_blank" rel="noopener">light.gg</a>{% if w.card %}<button type="button" class="goto" data-goto="{{ w.grid_id }}">My Copies</button>{% endif %}</div></div>
 </header>
 <div class="pop-body" id="pv-{{ side }}-{{ w.grid_id }}" data-g="{{ w.grid_id }}" hidden></div>
 </article>

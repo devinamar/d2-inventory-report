@@ -43,3 +43,19 @@ def test_a_split_weapon_shows_its_pool_and_its_weakest_columns_confidence(conn):
         ('Gun (Pantheon)', 'Gun', '(Pantheon)', 300, 4, 'low', 'Trait 1', 20, 'Rampage'),
         ('Fixed', 'Fixed', '', 400, 9, None, None, None, None),
     ]
+
+
+def test_a_weapons_margin_is_half_its_widest_share_range(conn):
+    # Rampage's 95% range (40% to 80%) is Gun's widest, so its shares are good
+    # to ±20 points; the trait pairs' ranges don't count, and a fixed roll has
+    # no shares.
+    pair = c.popularity_column('traits', [('Rampage + Outlaw', 0.5)])
+    pair['perks'][0].update(low=0.1, high=0.9)
+    trait = c.popularity_column('trait1', [('Rampage', 0.6), ('Kill Clip', 0.3)])
+    trait['perks'][0].update(low=0.4, high=0.8)
+    c.add_popularity(conn, 'Gun', [100], rank=1, columns=[pair, trait])
+    c.add_popularity(conn, 'Fixed', [400], rank=2)
+    rows = conn.execute(
+        "SELECT name, round(margin, 4) FROM v_popularity_weapon ORDER BY rank"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [('Gun', 0.2), ('Fixed', None)]

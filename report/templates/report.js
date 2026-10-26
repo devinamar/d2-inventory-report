@@ -114,7 +114,7 @@ function gridTip(perk) {
         const line = document.createElement('p');
         line.className = 'tip-pair';
         line.style.color = heat(p.rel);
-        line.textContent = `Paired with ${p.with} on ${pct(p.cond)} of its rolls: ${pct(p.share)} of all ${SIDE_LABELS[side]} pairs, #${p.rank}`;
+        line.textContent = `${p.name}: ${pct(p.share)} of all ${SIDE_LABELS[side]} pairs, #${p.rank}`;
         tip.append(line);
     }
 }
@@ -206,7 +206,11 @@ function placeShown(page) {
 function sortBySide(list) {
     const i = Number(sideOf(list) === 'pvp');
     const items = [...list.children];
-    items.sort((a, b) => a.dataset.r.split(' ')[i] - b.dataset.r.split(' ')[i]);
+    const place = (el) => Number(el.dataset.r.split(' ')[i]);
+    if (items.every((el, n) => n === 0 || place(items[n - 1]) <= place(el))) {
+        return;
+    }
+    items.sort((a, b) => place(a) - place(b));
     list.append(...items);
 }
 
@@ -220,23 +224,20 @@ function placesShown(text, shown) {
 // is ringed (pick) in those lists' colours (l<places>). With a copy, its perks
 // are outlined (owned); one in a roll of a list shown that the copy completes
 // is ringed solid (hit) in those lists' colours, and any other perk a list
-// shown names is ringed dashed (named).
+// shown names is ringed dashed (named). A row keeps its classes (_ring) and is
+// only touched when they change.
 function paintGrid(grid) {
     const shown = placeShown(grid.closest('.page'));
     const k = grid.closest('[data-g]').dataset.k;
     grid.classList.toggle('has-copy', Boolean(k));
     for (const li of grid.querySelectorAll('.pk')) {
-        for (const c of [...li.classList]) {
-            if (['pick', 'hit', 'named', 'owned'].includes(c) || /^l\d/.test(c)) {
-                li.classList.remove(c);
-            }
-        }
+        const ring = [];
         let places = placesShown(li.dataset.l, shown);
         let state = 'pick';
         if (k) {
             state = 'named';
             if ((li.dataset.o || '').split(' ').includes(k)) {
-                li.classList.add('owned');
+                ring.push('owned');
             }
             const hit = (li.dataset.h || '').split(' ').find((h) => h.startsWith(k + ':'));
             const hits = placesShown(hit && hit.split(':')[1], shown);
@@ -246,23 +247,31 @@ function paintGrid(grid) {
             }
         }
         if (places.length) {
-            li.classList.add(state, 'l' + places.join('-'));
+            ring.push(state, 'l' + places.join('-'));
         }
+        const key = ring.join(' ');
+        if ((li._ring || '') === key) {
+            continue;
+        }
+        if (li._ring) {
+            li.classList.remove(...li._ring.split(' '));
+        }
+        li.classList.add(...ring);
+        li._ring = key;
     }
 }
 
-// A pair's figures on a side, from its line's path: its rank, rel, share,
-// each trait's share with the other (c1, c2) and the other's rank among its
-// partners (n1, n2), each 0 where players weren't seen with it, and its
-// verdict (g, b or m); null when the side has no pair scores.
+// A pair's figures on a side, from its line's path: its rank, rel and share,
+// each 0 where players weren't seen with it, and its verdict (g, b or m);
+// null when the side has no pair scores.
 function pairOn(path, side) {
     const figures = path.dataset[side];
     if (!figures) {
         return null;
     }
     const fields = figures.split(' ');
-    const [rank, rel, share, c1, c2, n1, n2] = fields.slice(0, 7).map(Number);
-    return { path, rank, rel, share, c1, c2, n1, n2, verdict: fields[7] };
+    const [rank, rel, share] = fields.slice(0, 3).map(Number);
+    return { path, rank, rel, share, verdict: fields[3] };
 }
 
 // How strongly a line shows: steeply fainter as its pair's share drops.
@@ -270,28 +279,60 @@ function fade(rel) {
     return 0.12 + 0.88 * rel * rel;
 }
 
-// Draw a pair's line from its first trait's row to its second's, in grid
-// coordinates (box, the grid's rectangle).
-function drawLine(box, from, to, pair, cls, width, opacity, color) {
-    const a = from.getBoundingClientRect();
-    const b = to.getBoundingClientRect();
-    const x1 = a.right - box.left;
-    const y1 = a.top + a.height / 2 - box.top;
-    const x2 = b.left - box.left;
-    const y2 = b.top + b.height / 2 - box.top;
-    const mx = (x1 + x2) / 2;
-    const p = pair.path;
-    p.setAttribute('d', `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`);
-    p.setAttribute('class', cls);
-    p.setAttribute('stroke-width', width);
-    p.setAttribute('stroke-opacity', opacity.toFixed(2));
-    p.style.stroke = color;
-    p.style.display = '';
+// The lines waiting for the next frame, by grid: each a pair's path, the
+// rows it joins (from in Trait 1, to in Trait 2) and its look. They are drawn
+// together, every rectangle read before any path is written, so the page is
+// laid out once a frame rather than once a line.
+const queued = new Map();
+
+// Draw the queued lines in their grids' coordinates; a grid closed since
+// (no width) draws none.
+function drawQueued() {
+    const jobs = [...queued].map(([grid, lines]) => ({
+        grid,
+        box: grid.getBoundingClientRect(),
+        lines: lines.map((line) => ({
+            ...line,
+            a: line.from.getBoundingClientRect(),
+            b: line.to.getBoundingClientRect(),
+        })),
+    }));
+    queued.clear();
+    for (const { grid, box, lines } of jobs) {
+        if (!box.width) {
+            continue;
+        }
+        for (const { path, a, b, cls, width, opacity, color } of lines) {
+            const x1 = a.right - box.left;
+            const y1 = a.top + a.height / 2 - box.top;
+            const x2 = b.left - box.left;
+            const y2 = b.top + b.height / 2 - box.top;
+            const mx = (x1 + x2) / 2;
+            path.setAttribute('d', `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`);
+            path.setAttribute('class', cls);
+            path.setAttribute('stroke-width', width);
+            path.setAttribute('stroke-opacity', opacity.toFixed(2));
+            path.style.stroke = color;
+            path.style.display = '';
+        }
+        const svg = grid.querySelector('.links');
+        svg.setAttribute('width', box.width);
+        svg.setAttribute('height', box.height);
+        svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+    }
+}
+
+// Queue a grid's lines for the next frame, replacing any queued before.
+function queueLines(grid, lines) {
+    if (!queued.size) {
+        requestAnimationFrame(drawQueued);
+    }
+    queued.set(grid, lines);
 }
 
 // The trait columns in focus: a focused trait's six most run partners light
-// up (tinted, with their share of its rolls) and are lined, weighted by how
-// often players pick the pair; the other traits fade, and so do the other
+// up (tinted, showing the pair's share of all the weapon's pairs in bold) and
+// are lined, weighted by how often players pick the pair; the other traits fade, and so do the other
 // columns. Without a focus, the side's three most picked pairs are lined, or
 // with a copy shown, the pairs it can make that are desired (in a roll of a
 // list shown, or the pair's verdict) or undesirable (in a trash roll of a list
@@ -299,30 +340,40 @@ function drawLine(box, from, to, pair, cls, width, opacity, color) {
 // pairs it can't make.
 function applyFocus(grid, focus) {
     grid._focus = focus;
-    for (const li of grid.querySelectorAll('.pk')) {
-        li.classList.remove('focus', 'partner', 'dim');
-        li.style.opacity = '';
-        li.style.removeProperty('--heat');
-        delete li.dataset.f;
-        li._pair = null;
-        if (li.hasAttribute('aria-pressed')) {
-            li.setAttribute('aria-pressed', li === grid._pinned);
+    if (grid._lit) {
+        for (const li of grid._lit) {
+            li.classList.remove('focus', 'partner', 'dim');
+            li.style.removeProperty('--heat');
+            delete li.dataset.f;
+            li._pair = null;
         }
+        for (const list of grid.querySelectorAll('.pl.soft')) {
+            list.classList.remove('soft');
+        }
+        grid._lit = null;
     }
-    for (const list of grid.querySelectorAll('.pl.soft')) {
-        list.classList.remove('soft');
+    if ((grid._pressed || null) !== (grid._pinned || null)) {
+        if (grid._pressed) {
+            grid._pressed.setAttribute('aria-pressed', 'false');
+        }
+        if (grid._pinned) {
+            grid._pinned.setAttribute('aria-pressed', 'true');
+        }
+        grid._pressed = grid._pinned;
     }
     const svg = grid.querySelector('.links');
     const paths = [...svg.children];
     for (const p of paths) {
-        p.style.display = 'none';
+        if (p.style.display !== 'none') {
+            p.style.display = 'none';
+        }
     }
     const t1 = grid.querySelector('.pc[data-col="trait1"]');
     const t2 = grid.querySelector('.pc[data-col="trait2"]');
-    const box = grid.getBoundingClientRect();
-    if (!t1 || !t2 || !box.width) {
+    if (!t1 || !t2) {
         return;
     }
+    const lines = [];
     const side = sideOf(grid);
     const row = (col, key) => col.querySelector(`[data-tip="${key}"]`);
     const pairs = paths.map((p) => pairOn(p, side)).filter((p) => p && p.rank);
@@ -331,15 +382,10 @@ function applyFocus(grid, focus) {
     if (focus) {
         const first = t1.contains(focus);
         const key = focus.dataset.tip;
-        const mine = pairs.filter((p) => p.path.dataset[first ? 'a' : 'b'] === key);
-        mine.sort((x, y) => (first ? x.n1 - y.n1 : x.n2 - y.n2));
-        const partners = mine.slice(0, 6);
-        let top = 1;
-        if (partners.length) {
-            top = partners[0].share;
-        }
+        const partners = pairs.filter((p) => p.path.dataset[first ? 'a' : 'b'] === key).slice(0, 6);
         focus.classList.add('focus');
-        for (const li of [...t1.querySelectorAll('.pk'), ...t2.querySelectorAll('.pk')]) {
+        grid._lit = [...t1.querySelectorAll('.pk'), ...t2.querySelectorAll('.pk')];
+        for (const li of grid._lit) {
             if (li !== focus) {
                 li.classList.add('dim');
             }
@@ -352,17 +398,13 @@ function applyFocus(grid, focus) {
             if (!other) {
                 continue;
             }
-            let cond = p.c2;
-            if (first) {
-                cond = p.c1;
-            }
-            other.classList.replace('dim', 'partner');
-            other.style.opacity = (0.3 + 0.7 * (p.share / top) ** 2).toFixed(2);
-            other.style.setProperty('--heat', heat(p.rel));
-            other.dataset.f = pct(cond);
-            other._pair = { with: focus.textContent, cond, share: p.share, rank: p.rank, rel: p.rel };
             const [from, to] = first ? [focus, other] : [other, focus];
-            drawLine(box, from, to, p, 'hover', 1 + 5 * p.rel, Math.max(0.25, fade(p.rel)), heat(p.rel));
+            other.classList.replace('dim', 'partner');
+            other.style.setProperty('--heat', heat(p.rel));
+            other.dataset.f = pct(p.share);
+            other._pair = { name: from.textContent + ' + ' + to.textContent, share: p.share, rank: p.rank, rel: p.rel };
+            const opacity = Math.max(0.25, fade(p.rel));
+            lines.push({ path: p.path, from, to, cls: 'hover', width: 1 + 5 * p.rel, opacity, color: heat(p.rel) });
         }
         for (const list of grid.querySelectorAll('.pc:not([data-col^="trait"]) .pl')) {
             list.classList.add('soft');
@@ -393,13 +435,14 @@ function applyFocus(grid, focus) {
             if (trash) {
                 color = 'var(--bad)';
             }
-            drawLine(box, from, to, p, cls, 2.5, opacity, color);
+            lines.push({ path, from, to, cls, width: 2.5, opacity, color });
         }
         for (const p of pairs.filter((x) => !made.includes(x.path)).slice(0, 2)) {
             const from = row(t1, p.path.dataset.a);
             const to = row(t2, p.path.dataset.b);
             if (from && to) {
-                drawLine(box, from, to, p, 'top', 1.5, 0.7 * fade(p.rel), heat(p.rel));
+                const opacity = 0.7 * fade(p.rel);
+                lines.push({ path: p.path, from, to, cls: 'top', width: 1.5, opacity, color: heat(p.rel) });
             }
         }
     } else {
@@ -407,17 +450,18 @@ function applyFocus(grid, focus) {
             const from = row(t1, p.path.dataset.a);
             const to = row(t2, p.path.dataset.b);
             if (from && to) {
-                drawLine(box, from, to, p, 'good', 1 + 5 * p.rel, fade(p.rel), heat(p.rel));
+                const width = 1 + 5 * p.rel;
+                lines.push({ path: p.path, from, to, cls: 'good', width, opacity: fade(p.rel), color: heat(p.rel) });
             }
         }
     }
-    svg.setAttribute('width', box.width);
-    svg.setAttribute('height', box.height);
-    svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+    queueLines(grid, lines);
 }
 
-// A grid's focus follows the pointer and keyboard over its traits; a click
-// or Enter pins it, and Esc, or a click elsewhere in the grid, unpins it.
+// A grid's focus follows the pointer and keyboard over its traits, held while
+// the pointer crosses the space between them and dropped when it leaves the
+// grid; a click or Enter pins it, and Esc, or a click elsewhere in the grid,
+// unpins it.
 function traitRow(target) {
     const li = target.closest('.pk');
     if (li && li.closest('.pc[data-col^="trait"]')) {
@@ -438,7 +482,7 @@ function bindGrid(grid) {
     };
     grid.addEventListener('mouseover', (e) => {
         const li = traitRow(e.target);
-        if (!grid._pinned && li !== grid._focus) {
+        if (!grid._pinned && li && li !== grid._focus) {
             applyFocus(grid, li);
         }
     });
@@ -476,20 +520,36 @@ function bindGrid(grid) {
     });
 }
 
-// Show copy k on a weapon card: its picker entry checked, and the grid, once
-// open, painted and lined for it.
-function pickCopy(card, k) {
+// Check copy k in a weapon card's picker, and name it on the grid host.
+function checkCopy(card, k) {
     for (const entry of card.querySelectorAll('.pr')) {
         entry.querySelector('.pr-select').setAttribute('aria-checked', entry.dataset.k === k);
     }
-    const host = card.querySelector('[data-g]');
-    host.dataset.k = k;
-    const grid = host.querySelector('.pg');
+    card.querySelector('[data-g]').dataset.k = k;
+}
+
+// Show copy k on a weapon card: checked, and the grid, once open, painted and
+// lined for it.
+function pickCopy(card, k) {
+    checkCopy(card, k);
+    const grid = card.querySelector('.pg');
     if (grid) {
         paintGrid(grid);
         applyFocus(grid, grid._pinned || null);
     }
 }
+
+// Grid hosts are watched as they come near the window (within 1000px): a host
+// marked stale (a switch changed while it was away, or Expand all opened its
+// card) opens then, so off-screen grids cost nothing until they're seen.
+const watcher = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+        e.target._near = e.isIntersecting;
+        if (e.isIntersecting && e.target._stale) {
+            openGrid(e.target);
+        }
+    }
+}, { rootMargin: '1000px 0px' });
 
 // Open the grid a host names (data-g: a Popular row's body, a weapon card's
 // main column): cloned from its template the first time, then sorted for the
@@ -517,12 +577,14 @@ function openGrid(host) {
         bindGrid(grid);
         resizer.observe(grid);
     }
+    host._stale = false;
+    watcher.observe(host);
     const card = host.closest('.fam');
     if (card) {
         const picker = card.querySelector('.picker');
         sortBySide(picker);
         if (!host.dataset.k) {
-            pickCopy(card, picker.firstElementChild.dataset.k);
+            checkCopy(card, picker.firstElementChild.dataset.k);
         }
     }
     for (const list of grid.querySelectorAll('.pl')) {
@@ -530,6 +592,17 @@ function openGrid(host) {
     }
     paintGrid(grid);
     applyFocus(grid, grid._pinned || null);
+}
+
+// Open or refresh a grid host's grid now when it's near the window, else when
+// it comes near.
+function refresh(host) {
+    if (host._near) {
+        openGrid(host);
+    } else {
+        host._stale = true;
+        watcher.observe(host);
+    }
 }
 
 // The grid host of a card part a toggle opens: the part itself (a Popular
@@ -550,7 +623,7 @@ function setSide(card, side) {
     }
     const grid = card.querySelector('.pg');
     if (grid) {
-        openGrid(grid.closest('[data-g]'));
+        refresh(grid.closest('[data-g]'));
     }
 }
 
@@ -631,7 +704,7 @@ function roll(group, open) {
         target.hidden = !open;
         const host = gridHost(target);
         if (open && host) {
-            openGrid(host);
+            refresh(host);
         }
     }
     for (const b of group.querySelectorAll('.expand')) {
@@ -671,10 +744,48 @@ function applySwitches(page) {
     }
     countCards(page);
     for (const grid of page.querySelectorAll('.pg')) {
-        paintGrid(grid);
-        applyFocus(grid, grid._pinned || null);
+        refresh(grid.closest('[data-g]'));
     }
     filterPopular(page);
+}
+
+// My Copies: a weapons page card by its grid's id (a flagged copy's
+// keeper's, a Popular weapon's), on the side given, with copy k picked when
+// given. The weapons page shows first when another does (its own history
+// entry, so Back returns), the weapons switches go back to All when they hide
+// the card, its sections and the card open, and it scrolls into view, flashed.
+function goToCard(grid, k, side) {
+    const card = document.getElementById('fam-' + grid).closest('.fam');
+    const page = card.closest('.page');
+    if (page.hidden) {
+        history.pushState(null, '', '#' + page.id.slice('page-'.length));
+        route();
+    }
+    if (card.hidden) {
+        for (const sw of page.querySelectorAll('.switch[data-key="wpn"]')) {
+            for (const b of sw.children) {
+                b.setAttribute('aria-pressed', b === sw.firstElementChild);
+            }
+        }
+        applySwitches(page);
+    }
+    for (let d = card.closest('details'); d; d = d.parentElement.closest('details')) {
+        d.open = true;
+    }
+    if (side) {
+        setSide(card, side);
+    }
+    const toggle = card.querySelector('.toggle');
+    if (toggle.getAttribute('aria-expanded') !== 'true') {
+        toggle.click();
+    }
+    if (k) {
+        pickCopy(card, k);
+    }
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.classList.remove('flash');
+    void card.offsetWidth;
+    card.classList.add('flash');
 }
 
 document.addEventListener('click', (e) => {
@@ -737,6 +848,18 @@ document.addEventListener('click', (e) => {
         if (open && host) {
             openGrid(host);
         }
+    }
+
+    // My Copies: a flagged copy's opens its keeper's card, a Popular
+    // weapon's its card, on the side of the list it's in.
+    const goto = e.target.closest('.goto');
+    if (goto) {
+        const list = goto.closest('.pops');
+        let side = null;
+        if (list) {
+            side = list.dataset.side;
+        }
+        goToCard(goto.dataset.goto, goto.dataset.k, side);
     }
 
     // A weapon card's picker entry shows its copy.

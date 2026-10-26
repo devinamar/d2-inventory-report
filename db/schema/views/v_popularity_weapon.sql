@@ -8,7 +8,9 @@
 -- confidence, weakest (its label) and weakest_votes come from its weakest
 -- column (v_popularity_column), with that column's top pick and its range,
 -- and same, which says whether every column has the same votes; all are NULL
--- for a weapon with no scored columns (a fixed roll).
+-- for a weapon with no scored columns (a fixed roll). margin is its shares'
+-- margin of error: half the widest 95% range among its perks' shares
+-- (v_popularity_perk), NULL for a fixed roll.
 CREATE VIEW v_popularity_weapon AS
 WITH weapon AS (
     SELECT w.*,
@@ -27,8 +29,11 @@ SELECT w.side, w.name, w.family,
        w.hard_copies >= r.endgame_copies AND 1.0 * w.hard_copies / w.players >= r.endgame_share
            AS endgame,
        c.confidence, c.label AS weakest, c.votes AS weakest_votes, c.same,
-       c.top, c.top_share, c.top_low, c.top_high
+       c.top, c.top_share, c.top_low, c.top_high, m.margin
 FROM weapon w
 JOIN (SELECT DISTINCT name, grid_id FROM v_popularity_version) v ON v.name = w.name
 CROSS JOIN popularity_rule r
-LEFT JOIN v_popularity_column c ON c.side = w.side AND c.name = w.name AND c.weakest;
+LEFT JOIN v_popularity_column c ON c.side = w.side AND c.name = w.name AND c.weakest
+LEFT JOIN (
+    SELECT side, name, MAX((high - low) / 2) AS margin FROM v_popularity_perk GROUP BY side, name
+) m ON m.side = w.side AND m.name = w.name;

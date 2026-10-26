@@ -63,6 +63,21 @@ def test_a_row_names_its_pool_badges_and_most_picked_and_opens_its_grid(conn, tm
     assert '<div class="pops" data-side="pvp" hidden>' in page
 
 
+def test_a_weapon_you_have_a_card_for_goes_to_it(conn, tmp_path):
+    # The vault's Gun is on a Roll Quality card, so its row goes there; no copy
+    # of Rifle is, so its row has no button.
+    add_scored(conn)
+    page = popular_page(conn, tmp_path)
+    pve = page.split('<div class="pops" data-side="pve">')[1].split('</article>')[0]
+    pvp = page.split('<div class="pops" data-side="pvp"')[1].split('</article>')[0]
+    assert (
+        '<div class="fam-links"><a class="lgg" href="https://www.light.gg/db/items/100/" '
+        'target="_blank" rel="noopener">light.gg</a>'
+        '<button type="button" class="goto" data-goto="100">My Copies</button></div>'
+    ) in pve
+    assert 'class="goto"' not in pvp
+
+
 def test_without_scores_the_page_says_so(conn, tmp_path):
     c.add_weapon_def(conn, 100)
     c.add_copy(conn, 'a', 100)
