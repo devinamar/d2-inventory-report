@@ -68,7 +68,7 @@ One HTML page (and a Markdown copy) with:
 | `paths.py` | Where every file lives |
 | `models.py` | The data shapes passed between steps |
 | `db/` | The SQLite database and its schema |
-| `sources/` | Downloads from Bungie, DIM, [Clarity](https://github.com/Database-Clarity/Live-Clarity-Database), [The Aegis](https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/), d2-perk-popularity and the wishlists |
+| `sources/` | Downloads from Bungie, DIM, [Clarity](https://github.com/Database-Clarity/Live-Clarity-Database), [The Aegis](https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/), [d2-perk-popularity](https://github.com/devinamar/d2-weapon-perk-scores) and the wishlists |
 | `extract/` | Saves what the sources return to the db |
 | `analyze/` | Scores rolls, finds duplicates, picks armor to purge |
 | `report/` | Writes the HTML and Markdown report |
