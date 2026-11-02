@@ -73,3 +73,7 @@ One HTML page (and a Markdown copy) with:
 | `analyze/` | Scores rolls, finds duplicates, picks armor to purge |
 | `report/` | Writes the HTML and Markdown report |
 | `tests/` | Mirrors the folders above |
+
+## License
+
+MIT; see [LICENSE](LICENSE).
