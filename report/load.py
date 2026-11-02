@@ -50,9 +50,10 @@ SELECT (SELECT COUNT(*) FROM v_weapon) AS weapons, (SELECT COUNT(*) FROM v_armor
 FROM weapon_result w
 """
 
-# Every outside source with what it gives, a link ('' for d2-perk-popularity,
-# whose repo is private) and how it fared this run; ok is 0 for a failed,
-# stale or skipped source, and for one never checked.
+# Every outside source with what it gives, a link (for d2-perk-popularity,
+# whose repo is private, the public repo it publishes its scores to) and how it
+# fared this run; ok is 0 for a failed, stale or skipped source, and for one
+# never checked.
 SOURCES = """
 WITH source (source, name, gives, url, n) AS (
     VALUES ('manifest', 'Bungie manifest', 'Item, perk and set definitions',
@@ -65,7 +66,8 @@ WITH source (source, name, gives, url, n) AS (
            ('aegis', 'The Aegis', 'Armor set bonus rankings',
             'https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/',
             6),
-           ('perk_popularity', 'd2-perk-popularity', 'The rolls players run, PvE and PvP', '', 7)
+           ('perk_popularity', 'd2-perk-popularity', 'The rolls players run, PvE and PvP',
+            'https://github.com/devinamar/d2-weapon-perk-scores', 7)
     UNION ALL
     SELECT 'wishlist:' || key, label, 'Weapon rolls to look for', url, 5 FROM wishlist_source
 )

@@ -500,8 +500,11 @@ def test_a_scored_weapons_elements_are_its_versions_in_the_games_order(conn):
     ]
 
 
-def test_the_scores_date_is_the_files_and_their_source_has_no_link(conn):
-    # d2-perk-popularity's repo is private, so it has no link yet.
+def test_the_scores_date_is_the_files_and_their_source_links_the_public_scores(conn):
+    # d2-perk-popularity's repo is private; it publishes to d2-weapon-perk-scores.
     c.add_popularity_file(conn, [])
     assert conn.execute(load.TOTALS).fetchone()['scores_at'] == '2026-10-25T15:23:40Z'
-    assert rows(conn, load.SOURCES, 'name', 'url')[-1] == ('d2-perk-popularity', '')
+    assert rows(conn, load.SOURCES, 'name', 'url')[-1] == (
+        'd2-perk-popularity',
+        'https://github.com/devinamar/d2-weapon-perk-scores',
+    )
