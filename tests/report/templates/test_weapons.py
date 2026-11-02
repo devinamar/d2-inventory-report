@@ -79,6 +79,42 @@ def test_roll_quality_groups_the_cards_by_slot_and_weapon_type(conn, tmp_path):
     assert '<div class="switch side" role="group" aria-label="Popularity">' in page
 
 
+def test_the_element_switch_offers_the_cards_elements_and_each_card_names_its_copies(
+    conn, tmp_path
+):
+    # The Test Rifle's copies are Solar and Arc (rolled, not its own Kinetic),
+    # the Solo Rifle's its own Kinetic. The switch, a weapons switch after the
+    # Weapons row, offers just those three, All first, in the game's order with
+    # the manifest's icons; each card names its copies' elements among its
+    # switch values, so the Test Rifle shows for either of its own.
+    with conn:
+        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
+    c.add_weapon_def(conn, 100)
+    c.add_weapon_def(conn, 200, name='Solo Rifle')
+    for instance_id, item_hash, element in (('w1', 100, 3), ('w2', 100, 2), ('s1', 200, None)):
+        c.add_copy(conn, instance_id, item_hash, c.WEAPON_SOCKETS, damage_type=element)
+        with conn:
+            conn.execute("INSERT INTO weapon_result VALUES (?, 0, 0)", (instance_id,))
+    page = weapons_page(conn, tmp_path)
+
+    def button(name):
+        return (
+            f'<button type="button" data-value="{name}" aria-pressed="false">'
+            f'<img src="https://www.bungie.net/{name.lower()}.png" alt="">{name}</button>\n'
+        )
+
+    assert (
+        'Has wishlist</button>\n</div>\n</div>\n<div class="switch-row">\n'
+        '<span class="label">Element</span>\n'
+        '<div class="switch multi" role="group" aria-label="Element" data-key="wpn">\n'
+        '<button type="button" data-value="all" aria-pressed="true">All</button>\n'
+        + ''.join(button(name) for name in ('Kinetic', 'Arc', 'Solar'))
+        + '</div>\n</div>'
+    ) in page
+    assert '<article class="card fam" data-side="pve" data-wpn="all dupes Solar Arc">' in page
+    assert '<article class="card fam" data-side="pve" data-wpn="all Kinetic">' in page
+
+
 def test_a_family_whose_versions_roll_different_pools_is_a_card_per_pool(conn, tmp_path):
     # Gun (Pantheon) is the scored weapon for version 100; version 101, which
     # no scored weapon lists, makes a card of the family. Each card's title is
@@ -162,7 +198,7 @@ def test_a_copys_entry_names_the_lists_it_matches_as_the_wishlist_switch_shows(c
     ) in w1
     assert (
         '<article class="card fam" data-side="pve" data-wpn="all dupes listed-* listed-voltron '
-        'listed-mine">'
+        'listed-mine Kinetic">'
     ) in page
     assert '<i class="wl-dot l4" aria-hidden="true"></i>Mine</button>' in page
 
@@ -172,7 +208,7 @@ def test_a_weapon_no_list_covers_says_so(conn, tmp_path):
     # entries in every view.
     rifle_copies(conn)
     page = weapons_page(conn, tmp_path)
-    assert '<article class="card fam" data-side="pve" data-wpn="all dupes">' in page
+    assert '<article class="card fam" data-side="pve" data-wpn="all dupes Kinetic">' in page
     assert (
         '<span class="none" data-wl="* voltron aegis_endgame aegis_shopping">'
         'Missing wishlist entries</span>'

@@ -125,6 +125,26 @@ def test_roll_copies_rank_each_cards_copies_by_popularity(conn):
     assert (totals['matched'], totals['uncovered']) == (3, 1)
 
 
+def test_the_weapons_pages_elements_are_its_cards_copies_in_the_games_order(conn):
+    # A copy's element is its own (the Arc and Solar copies of the Kinetic
+    # Test Rifle) or its weapon's (the third copy). The Void Old Rifle, below
+    # Legendary, is flagged and on no card, so the switch doesn't offer Void.
+    add_rifle(conn)
+    add_rifle_copy(conn, 'solar', [c.TRAIT_PERK_A], 5, 0, damage_type=3)
+    add_rifle_copy(conn, 'arc', [c.TRAIT_PERK_A], 5, 0, damage_type=2)
+    add_rifle_copy(conn, 'kinetic', [c.TRAIT_PERK_A], 5, 0)
+    c.add_weapon_def(conn, 300, name='Old Rifle', tier=3, damage_type=4)
+    c.add_copy(conn, 'old', 300)
+    with conn:
+        conn.execute("INSERT INTO weapon_pruning VALUES ('old', 'below_legendary', NULL)")
+        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
+    assert rows(conn, load.WEAPON_ELEMENTS, 'element', 'element_icon') == [
+        ('Kinetic', 'https://www.bungie.net/kinetic.png'),
+        ('Arc', 'https://www.bungie.net/arc.png'),
+        ('Solar', 'https://www.bungie.net/solar.png'),
+    ]
+
+
 def test_grid_rows_name_the_copies_with_each_perk_and_the_rolls_they_complete(conn):
     # a (1 on the card) can switch between Kill Clip and Rampage, b (2) has
     # Rampage. Both complete One's Rampage roll, a Two's Kill Clip roll too:
@@ -446,13 +466,37 @@ def test_a_grids_pairs_carry_both_sides_figures_and_the_copies_making_them(conn)
     ]
 
 
-def test_populars_filters_offer_the_scored_weapons_types_slots_and_ammo(conn):
+def test_populars_filters_offer_the_scored_weapons_types_slots_ammo_and_elements(conn):
     add_scored_guns(conn)
     assert rows(conn, load.POPULAR_OPTIONS, 'kind', 'value', 'label') == [
         ('ammo', 'primary', 'Primary'),
         ('ammo', 'special', 'Special'),
+        ('element', 'Kinetic', 'Kinetic'),
         ('slot', 'Kinetic Weapons', 'Kinetic'),
         ('type', 'Auto Rifle', 'Auto Rifle'),
+    ]
+
+
+def test_a_scored_weapons_elements_are_its_versions_in_the_games_order(conn):
+    # Gun (Adept), a version of Gun, is Arc, as reissues changed some weapons'
+    # elements: Gun comes in Kinetic and Arc, in the damage types' order rather
+    # than by name, and so do the Element filter's choices, with their icons.
+    add_scored_guns(conn)
+    with conn:
+        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
+        conn.execute(
+            "UPDATE DestinyInventoryItemDefinition SET defaultDamageTypeHash = "
+            "(SELECT hash FROM DestinyDamageTypeDefinition WHERE name = 'Arc') WHERE hash = 101"
+        )
+    assert rows(conn, load.POPULARITY, 'side', 'name', 'element') == [
+        ('pve', 'Rifle', 'Kinetic'),
+        ('pve', 'Gun', 'Kinetic Arc'),
+        ('pvp', 'Gun', 'Kinetic Arc'),
+    ]
+    options = [r for r in conn.execute(load.POPULAR_OPTIONS) if r['kind'] == 'element']
+    assert [(o['value'], o['icon']) for o in options] == [
+        ('Kinetic', 'https://www.bungie.net/kinetic.png'),
+        ('Arc', 'https://www.bungie.net/arc.png'),
     ]
 
 

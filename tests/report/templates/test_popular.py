@@ -51,7 +51,7 @@ def test_a_row_names_its_pool_badges_and_most_picked_and_opens_its_grid(conn, tm
     pve = page.split('<div class="pops" data-side="pve">')[1].split('</article>')[0]
     assert (
         '<article class="card pop-row" data-n="gun (pantheon)" data-type="Auto Rifle" '
-        'data-slot="Kinetic Weapons" data-ammo="special" data-owned="">'
+        'data-slot="Kinetic Weapons" data-ammo="special" data-element="Kinetic" data-owned="">'
     ) in pve
     assert '<span class="pop-rank">#3</span>' in pve
     assert '<span class="fam-title">Gun<img class="ammo"' in pve
@@ -61,6 +61,57 @@ def test_a_row_names_its_pool_badges_and_most_picked_and_opens_its_grid(conn, tm
     assert 'class="pop-chip heat-mid" tabindex="0" data-tip="c-pve-100">Medium confidence' in pve
     assert '<div class="pop-body" id="pv-pve-100" data-g="100" hidden></div>' in pve
     assert '<div class="pops" data-side="pvp" hidden>' in page
+
+
+def test_the_element_filter_offers_the_scored_weapons_elements_and_each_row_names_its(
+    conn, tmp_path
+):
+    # Gun's versions are Arc (the one it's shown as) and Kinetic, as reissues
+    # changed some weapons' elements; Rifle is Strand. The filter, after Ammo,
+    # offers just those three, All first, in the game's order (Kinetic before
+    # Arc) with the manifest's icons. Gun's row names both its elements in that
+    # order, under its name, for the filter to match either.
+    with conn:
+        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
+    c.add_weapon_def(conn, 100, name='Gun', damage_type=2)
+    c.add_weapon_def(conn, 101, name='Gun')
+    c.add_weapon_def(conn, 200, name='Rifle', damage_type=7)
+    c.add_popularity(conn, 'Gun', [100, 101])
+    c.add_popularity(conn, 'Rifle', [200], rank=2)
+    c.add_weapon_def(conn, 300, name='Unscored')
+    c.add_copy(conn, 'a', 300)  # a report needs a vault
+    page = popular_page(conn, tmp_path)
+
+    def icon(name):
+        return f'https://www.bungie.net/{name.lower()}.png'
+
+    def button(name):
+        return (
+            f'<button type="button" data-value="{name}" aria-pressed="false">'
+            f'<img src="{icon(name)}" alt="">{name}</button>'
+        )
+
+    def badge(name):
+        return f'<span class="element"><img src="{icon(name)}" alt="" loading="lazy">{name}</span>'
+
+    assert (
+        'aria-label="Ammo" data-filter="ammo"><button type="button" data-value="" '
+        'aria-pressed="true">All</button></div>\n'
+        '<div class="switch multi" role="group" aria-label="Element" data-filter="element">'
+        '<button type="button" data-value="" aria-pressed="true">All</button>'
+        + ''.join(button(name) for name in ('Kinetic', 'Arc', 'Strand'))
+        + '</div>\n<div class="switch flip" role="group" aria-label="Vault">'
+    ) in page
+    gun = page.split('data-n="gun"')[1].split('</article>')[0]
+    assert gun.startswith(
+        ' data-type="Auto Rifle" data-slot="Kinetic Weapons" data-ammo="" '
+        'data-element="Kinetic Arc">'
+    )
+    assert (
+        f'</h5>\n<span class="elements">{badge("Kinetic")}{badge("Arc")}</span>\n'
+        '<span class="sub2">'
+    ) in gun
+    assert f'<span class="elements">{badge("Strand")}</span>' in page
 
 
 def test_a_weapon_you_have_a_card_for_goes_to_it(conn, tmp_path):
