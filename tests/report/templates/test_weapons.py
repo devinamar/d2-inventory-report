@@ -170,7 +170,7 @@ def test_the_picker_gives_each_copy_its_place_and_score_on_each_side(conn, tmp_p
         '<span class="copy-n on-pve">#2</span><span class="pr-pop on-pve c4">43%</span>'
         '<span class="copy-n on-pvp keep">#1</span></span>\n<span class="pr-id">w1</span>'
     ) in entry(page, 1)
-    assert '<button type="button" class="copy-btn" data-q="w1" title="Copy id w1"' in page
+    assert '<button type="button" class="copy-btn" data-q="id:w1" title="Copy id:w1"' in page
 
 
 def test_a_copys_entry_names_the_lists_it_matches_as_the_wishlist_switch_shows(conn, tmp_path):

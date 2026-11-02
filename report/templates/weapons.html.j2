@@ -28,7 +28,7 @@
 {# The wishlist switch values a picker line answers: the keys of lists, and * (All lists) when all is true; hidden at first without it. #}
 {% macro shows(keys, all) %}{% set values = (['*'] if all else []) + keys %} data-wl="{{ values|join(' ') }}"{% if not all %} hidden{% endif %}{% endmacro %}
 
-{# A copy's entry in its card's picker: its icon with its gear tier and masterwork overlays; for each side its place on the card and its popularity score, in its heat (data-r holds both places, which report.js orders the entries by), its lock and DIM tag; its id on a line of its own; its version's name when it isn't the family's, and its element, rounds per minute, season and drop source when the card's copies differ in them; the lists with a roll it completes (No wishlist match, or Missing wishlist entries where the lists shown have no rolls for the weapon) and the lists that trash it, each line answering the wishlist switch; its kill count and DIM note. The corner button copies its id. #}
+{# A copy's entry in its card's picker: its icon with its gear tier and masterwork overlays; for each side its place on the card and its popularity score, in its heat (data-r holds both places, which report.js orders the entries by), its lock and DIM tag; its id on a line of its own; its version's name when it isn't the family's, and its element, rounds per minute, season and drop source when the card's copies differ in them; the lists with a roll it completes (No wishlist match, or Missing wishlist entries where the lists shown have no rolls for the weapon) and the lists that trash it, each line answering the wishlist switch; its kill count and DIM note. The corner button copies its DIM query, id:<its id>. #}
 {% macro pick(c) %}
 {% set covered = c.covered.split() %}
 {% set matched = c.matched.split() %}
@@ -70,7 +70,7 @@
 {% endif %}
 </span>
 </button>
-<button type="button" class="copy-btn" data-q="{{ c.instance_id }}" title="Copy id {{ c.instance_id }}" aria-label="Copy id {{ c.instance_id }}"></button>
+<button type="button" class="copy-btn" data-q="id:{{ c.instance_id }}" title="Copy id:{{ c.instance_id }}" aria-label="Copy id:{{ c.instance_id }}"></button>
 </div>
 {% endmacro %}
 <section class="page" id="page-weapons" hidden>

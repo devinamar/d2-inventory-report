@@ -879,9 +879,10 @@ document.addEventListener('click', (e) => {
         pickCopy(entry.closest('.fam'), entry.parentElement.dataset.k);
     }
 
-    // Copy buttons (a DIM query, a copy's id): copy data-q, or show it to
-    // copy by hand when the clipboard refuses. A text button says Copied for
-    // a moment; an icon button (a copy's id) turns green.
+    // Copy buttons (a DIM query: id:<n> for one copy, or several joined by
+    // or): copy data-q, or show it to copy by hand when the clipboard refuses.
+    // A text button says Copied for a moment; an icon button (one copy's)
+    // turns green.
     const copier = e.target.closest('[data-q]');
     if (copier) {
         copier.dataset.label ??= copier.textContent;
