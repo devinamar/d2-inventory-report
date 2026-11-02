@@ -18,14 +18,13 @@ Reads your Destiny 2 vault and tells you what to keep and what to dismantle.
    - Redirect URL: `https://localhost:7777/callback`
    - Scope: Read your Destiny 2 information
 
-> [!NOTE]
-> The Bungie app is required for the application, as this is locally run and private. This
-> allows for caching tokens.
+   You register your own app because the report runs entirely on your machine; the Confidential
+   type lets it refresh your login, so you don't sign in every run.
 
-3. Run it with your Bungie Name. The first run asks for the app's API key, client_id and
-   client_secret, and an optional [DIM](https://destinyitemmanager.com/) (Destiny Item Manager)
-   [API key](https://github.com/DestinyItemManager/dim-api#get-an-api-key) for your DIM tags
-   and notes, then saves them to `.env`:
+3. Run it with your Bungie Name. The first run asks for the app's API key, client ID and client
+   secret (plus an optional [DIM](https://destinyitemmanager.com/)
+   [API key](https://github.com/DestinyItemManager/dim-api#get-an-api-key) for your tags and
+   notes) and saves them to `.env`:
 
    ```bash
    ./d2-report "Name#1234"
