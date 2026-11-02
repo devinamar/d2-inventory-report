@@ -67,7 +67,7 @@ WITH source (source, name, gives, url, n) AS (
             'https://docs.google.com/spreadsheets/d/1JM-0SlxVDAi-C6rGVlLxa-J1WGewEeL8Qvq4htWZHhY/',
             6),
            ('perk_popularity', 'd2-perk-popularity', 'The rolls players run, PvE and PvP',
-            'https://github.com/devinamar/d2-weapon-perk-scores', 7)
+            'https://github.com/devinamar/d2-perk-popularity', 7)
     UNION ALL
     SELECT 'wishlist:' || key, label, 'Weapon rolls to look for', url, 5 FROM wishlist_source
 )
