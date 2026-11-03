@@ -57,6 +57,8 @@ One HTML page (and a Markdown copy) with:
 - **Exotics**: extra exotic copies
 - **Preferences**: your armor picks and wishlists
 
+How it decides what to flag and how it ranks the rest: [docs/methodology.md](docs/methodology.md).
+
 ## Structure
 
 | Path | What it does |
