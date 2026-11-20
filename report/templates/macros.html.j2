@@ -1,4 +1,4 @@
-{# HTML pieces the pages share: the class switch, collapsible section chevrons and the double chevron, DIM and purge buttons, icons and armor tiles. #}
+{# HTML pieces the pages share: the class switch, collapsible section chevrons and the double chevron, DIM and purge buttons, the perk search and the filters around it, icons and armor tiles. #}
 
 {# The class buttons; the caller gives each button's count. #}
 {% macro class_switch(classes) %}
@@ -27,6 +27,24 @@
 {% macro purge_button(rows) %}
 <button type="button" class="dim purge" data-q="{{ rows|dim }}">Copy purge IDs</button>
 {% endmacro %}
+
+{# The champion breaker a weapon's frame gives, as DIM shows it: the breaker type's icon over a corner of the weapon's icon, its name in its tooltip. #}
+{% macro breaker(w) %}{% if w.breaker_icon %}<img class="breaker" src="{{ w.breaker_icon }}" alt="" title="Breaker: {{ w.breaker }}" loading="lazy">{% endif %}{% endmacro %}
+
+{# A page's perk search (report.js): the box suggests perk names as you type, each one picked becomes a chip beside it, and the page shows the weapons with all of them. #}
+{% macro perk_search(page) %}
+<div class="perk-find"><div class="perk-field"><input class="perk-input" type="text" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="perks-{{ page }}" aria-label="Search perks" placeholder="Search perks" autocomplete="off" spellcheck="false"></div><ul class="perk-suggest" id="perks-{{ page }}" role="listbox" aria-label="Perks" hidden></ul></div>
+{%- endmacro %}
+
+{# The filters Popular's toolbar and the weapons page's share (report.js, filterItems): the weapon search, the perk search, the type list, and the Slot, Ammo and Element multi switches, each offering the page's options of its kind. #}
+{% macro filters(options, page) -%}
+<input class="search" type="search" placeholder="Search weapons" aria-label="Search weapons">
+{{ perk_search(page) }}
+<select class="type-select" aria-label="Weapon type"><option value="">All types</option>{% for o in options.get('type', []) %}<option>{{ o.value }}</option>{% endfor %}</select>
+<div class="switch multi" role="group" aria-label="Slot" data-filter="slot"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('slot', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false">{{ o.label }}</button>{% endfor %}</div>
+<div class="switch multi" role="group" aria-label="Ammo" data-filter="ammo"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('ammo', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false"><img src="{{ o.icon }}" alt="">{{ o.label }}</button>{% endfor %}</div>
+<div class="switch multi" role="group" aria-label="Element" data-filter="element"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('element', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false">{% if o.icon %}<img src="{{ o.icon }}" alt="">{% endif %}{{ o.label }}</button>{% endfor %}</div>
+{%- endmacro %}
 
 {# A 16px line icon: the lock, or a DIM tag's (the shapes of DIM's own tag
    icons). #}

@@ -79,40 +79,113 @@ def test_roll_quality_groups_the_cards_by_slot_and_weapon_type(conn, tmp_path):
     assert '<div class="switch side" role="group" aria-label="Popularity">' in page
 
 
-def test_the_element_switch_offers_the_cards_elements_and_each_card_names_its_copies(
-    conn, tmp_path
-):
-    # The Test Rifle's copies are Solar and Arc (rolled, not its own Kinetic),
-    # the Solo Rifle's its own Kinetic. The switch, a weapons switch after the
-    # Weapons row, offers just those three, All first, in the game's order with
-    # the manifest's icons; each card names its copies' elements among its
-    # switch values, so the Test Rifle shows for either of its own.
+def test_the_toolbar_is_populars_then_the_weapons_toggles(conn, tmp_path):
+    # Popular's filters (the weapon search, then the perk search, its box
+    # empty until report.js fills it), Dupes and Has wishlist, the order
+    # toggles and the count; each copy's line saying it has the perks picked,
+    # hidden until a search finds it.
+    rifle_copies(conn)
+    page = weapons_page(conn, tmp_path)
+    toolbar = page.split('<div class="toolbar">')[1].split('</div>\n\n')[0]
+    assert toolbar.startswith(
+        '\n<input class="search" type="search" placeholder="Search weapons" '
+        'aria-label="Search weapons">\n<div class="perk-find"><div class="perk-field">'
+        '<input class="perk-input" type="text" role="combobox" aria-expanded="false" '
+        'aria-autocomplete="list" aria-controls="perks-weapons" aria-label="Search perks" '
+        'placeholder="Search perks" autocomplete="off" spellcheck="false"></div>'
+        '<ul class="perk-suggest" id="perks-weapons" role="listbox" aria-label="Perks" hidden>'
+        '</ul></div>\n<select class="type-select" aria-label="Weapon type">'
+    )
+    assert toolbar.endswith(
+        '<div class="switch flip" role="group" aria-label="Weapons">'
+        '<button type="button" data-filter="dupes" aria-pressed="false">Dupes</button>'
+        '<button type="button" data-filter="listed" aria-pressed="false">Has wishlist</button>'
+        '</div>\n<div class="switch flip" role="group" aria-label="Order">'
+        '<button type="button" data-sort="rank" aria-pressed="false">Popularity order</button>'
+        '<button type="button" data-sort="one" aria-pressed="false">One list</button></div>\n'
+        '<span class="shown"></span>\n'
+    )
+    w1 = entry(page, 1)
+    assert (
+        '<span class="pr-id">w1</span>\n<span class="has-perks" hidden>Has your perks</span>' in w1
+    )
+
+
+def test_the_toolbar_offers_the_cards_kinds_and_each_card_names_its_own(conn, tmp_path):
+    # A primary Auto Rifle whose copies are Solar and Arc (rolled, not its own
+    # Kinetic) and a heavy Rocket Launcher, Kinetic as its definition says:
+    # the type list and the Slot, Ammo and Element switches offer just those,
+    # elements in the game's order with the manifest's icons. Each card names
+    # its own for the filters: its name, type, slot, ammo type and its copies'
+    # elements.
     with conn:
         conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
-    c.add_weapon_def(conn, 100)
-    c.add_weapon_def(conn, 200, name='Solo Rifle')
-    for instance_id, item_hash, element in (('w1', 100, 3), ('w2', 100, 2), ('s1', 200, None)):
+    c.add_weapon_def(conn, 100, ammoType=1)
+    c.add_weapon_def(conn, 200, name='Rocket', ammoType=3, itemTypeDisplayName='Rocket Launcher')
+    for instance_id, item_hash, element in (('w1', 100, 3), ('w2', 100, 2), ('r1', 200, None)):
         c.add_copy(conn, instance_id, item_hash, c.WEAPON_SOCKETS, damage_type=element)
         with conn:
             conn.execute("INSERT INTO weapon_result VALUES (?, 0, 0)", (instance_id,))
     page = weapons_page(conn, tmp_path)
+    toolbar = page.split('<div class="toolbar">')[1].split('</div>\n\n')[0]
+    ammo = 'https://www.bungie.net/img/destiny_content/ammo_types/'
 
-    def button(name):
+    def button(value, label, icon=''):
+        img = ''
+        if icon:
+            img = f'<img src="{icon}" alt="">'
         return (
-            f'<button type="button" data-value="{name}" aria-pressed="false">'
-            f'<img src="https://www.bungie.net/{name.lower()}.png" alt="">{name}</button>\n'
+            f'<button type="button" data-value="{value}" aria-pressed="false">{img}{label}</button>'
         )
 
+    all_ = '<button type="button" data-value="" aria-pressed="true">All</button>'
     assert (
-        'Has wishlist</button>\n</div>\n</div>\n<div class="switch-row">\n'
-        '<span class="label">Element</span>\n'
-        '<div class="switch multi" role="group" aria-label="Element" data-key="wpn">\n'
-        '<button type="button" data-value="all" aria-pressed="true">All</button>\n'
-        + ''.join(button(name) for name in ('Kinetic', 'Arc', 'Solar'))
-        + '</div>\n</div>'
+        '<option value="">All types</option><option>Auto Rifle</option>'
+        '<option>Rocket Launcher</option></select>'
+    ) in toolbar
+    assert (
+        f'aria-label="Slot" data-filter="slot">{all_}'
+        + button('Kinetic Weapons', 'Kinetic')
+        + '</div>'
+    ) in toolbar
+    assert (
+        f'aria-label="Ammo" data-filter="ammo">{all_}'
+        + button('primary', 'Primary', ammo + 'primary.png')
+        + button('heavy', 'Heavy', ammo + 'heavy.png')
+        + '</div>'
+    ) in toolbar
+    assert (
+        f'aria-label="Element" data-filter="element">{all_}'
+        + ''.join(
+            button(e, e, f'https://www.bungie.net/{e.lower()}.png')
+            for e in ('Kinetic', 'Arc', 'Solar')
+        )
+        + '</div>'
+    ) in toolbar
+    assert (
+        'data-n="test rifle" data-type="Auto Rifle" data-slot="Kinetic Weapons" '
+        'data-ammo="primary" data-element="Solar Arc" data-listed="" data-dupes="">'
     ) in page
-    assert '<article class="card fam" data-side="pve" data-wpn="all dupes Solar Arc">' in page
-    assert '<article class="card fam" data-side="pve" data-wpn="all Kinetic">' in page
+    assert (
+        'data-n="rocket" data-type="Rocket Launcher" data-slot="Kinetic Weapons" '
+        'data-ammo="heavy" data-element="Kinetic" data-listed="">'
+    ) in page
+
+
+def test_the_cards_can_sit_in_one_list_or_by_slot_and_each_carries_its_ranks(conn, tmp_path):
+    # Above the slot sections, the one list; each slot's section starts with
+    # its list by popularity, both empty until the order toggles fill them
+    # (report.js). Each card carries its weapon's rank per side, none on PvP
+    # here.
+    rifle_copies(conn)
+    score_rifle(conn, rank=3)
+    page = weapons_page(conn, tmp_path)
+    assert '<div class="folds">\n<div class="fams all"></div>\n<details class="fold" open>' in page
+    assert (
+        '<h3>Kinetic <span class="num count">1</span></h3></summary>\n'
+        '<div class="fams ranked" data-slot="Kinetic Weapons"></div>'
+    ) in page
+    assert '<article class="card fam" data-side="pve" data-rank="3 " data-n=' in page
 
 
 def test_a_family_whose_versions_roll_different_pools_is_a_card_per_pool(conn, tmp_path):
@@ -150,6 +223,26 @@ def test_a_cards_header_gives_each_sides_rank_confidence_and_endgame(conn, tmp_p
     ) in page
     assert '<span class="pop-chip on-pvp">No PvP scores</span>' in page
     assert '</h5>\n<span class="endgame"><span class="cert pve" tabindex="0"' in page
+
+
+def test_the_breaker_shows_on_the_cards_icon_and_each_copys(conn, tmp_path):
+    # Both copies keep Adaptive Frame, which gives Shield Piercing: its icon
+    # over the corner of the card's weapon icon and of each copy's, its name
+    # in its tooltip and the icon's label.
+    c.add_breaker(conn, c.INTRINSIC_ADAPTIVE, 'Shield Piercing', 'Barrier')
+    rifle_copies(conn)
+    page = weapons_page(conn, tmp_path)
+    overlay = (
+        '<img class="breaker" src="https://www.bungie.net/img/shield_piercing.png" alt="" '
+        'title="Breaker: Shield Piercing" loading="lazy">'
+    )
+    assert (
+        'aria-label="Auto Rifle · Adaptive Frame · Shield Piercing breaker" '
+        'title="Auto Rifle · Adaptive Frame · Shield Piercing breaker">'
+    ) in page
+    assert f'{overlay}</span><span class="fam-name">' in page
+    assert ', Shield Piercing breaker">' in entry(page, 1)
+    assert f'{overlay}</span>\n<span class="pr-text">' in entry(page, 1)
 
 
 def test_the_picker_gives_each_copy_its_place_and_score_on_each_side(conn, tmp_path):
@@ -196,19 +289,16 @@ def test_a_copys_entry_names_the_lists_it_matches_as_the_wishlist_switch_shows(c
         '<span class="none" data-wl="aegis_endgame aegis_shopping" hidden>'
         'Missing wishlist entries</span>'
     ) in w1
-    assert (
-        '<article class="card fam" data-side="pve" data-wpn="all dupes listed-* listed-voltron '
-        'listed-mine Kinetic">'
-    ) in page
+    assert ' data-listed="voltron mine" data-dupes="">' in page
     assert '<i class="wl-dot l4" aria-hidden="true"></i>Mine</button>' in page
 
 
 def test_a_weapon_no_list_covers_says_so(conn, tmp_path):
-    # Dupes shows the rifle, Has wishlist doesn't; each copy is missing
-    # entries in every view.
+    # Dupes shows the rifle, Has wishlist doesn't (no list covers it); each
+    # copy is missing entries in every view.
     rifle_copies(conn)
     page = weapons_page(conn, tmp_path)
-    assert '<article class="card fam" data-side="pve" data-wpn="all dupes Kinetic">' in page
+    assert ' data-listed="" data-dupes="">' in page
     assert (
         '<span class="none" data-wl="* voltron aegis_endgame aegis_shopping">'
         'Missing wishlist entries</span>'

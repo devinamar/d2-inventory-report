@@ -176,6 +176,53 @@ function countCards(page) {
         total.textContent = page.querySelectorAll('.fam:not([hidden])').length;
     }
 }
+// The weapons page's order toggles (data-sort): by default each card sits in
+// its slot's and weapon type's section, in the page's order. Popularity order
+// lists each slot's cards in one list (.ranked, by data-slot) by their
+// weapon's rank on the side the Popularity switch shows (data-rank holds
+// both), those with none last; One list puts every card in one list (.all),
+// in the page's order or, with Popularity order, by rank. The sections left
+// empty are hidden by the recount. Each card keeps its section and place
+// (_home, _n) to go back to.
+function sortCards(page) {
+    const pressed = (name) => {
+        const b = page.querySelector(`button[data-sort="${name}"]`);
+        return Boolean(b) && b.getAttribute('aria-pressed') === 'true';
+    };
+    const ranked = pressed('rank');
+    const one = pressed('one');
+    if (!ranked && !one && !page._sorted) {
+        return;
+    }
+    const cards = [...page.querySelectorAll('.fam')];
+    cards.forEach((card, n) => {
+        if (!card._home) {
+            card._home = card.parentElement;
+            card._n = n;
+        }
+    });
+    const side = page.querySelector('.switch.side:not(.mini) [aria-pressed="true"]').dataset.value;
+    const i = Number(side === 'pvp');
+    const place = (card) => Number(card.dataset.rank.split(' ')[i]) || Infinity;
+    if (ranked) {
+        cards.sort((a, b) => place(a) - place(b) || a._n - b._n);
+    } else {
+        cards.sort((a, b) => a._n - b._n);
+    }
+    if (one) {
+        page.querySelector('.fams.all').append(...cards);
+    } else if (ranked) {
+        for (const list of page.querySelectorAll('.fams.ranked')) {
+            list.append(...cards.filter((card) => card.dataset.slot === list.dataset.slot));
+        }
+    } else {
+        for (const card of cards) {
+            card._home.append(card);
+        }
+    }
+    page._sorted = ranked || one;
+    countCards(page);
+}
 addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
 
 // Perk grids (grids.html.j2): a grid's template is cloned into a Popular
@@ -224,10 +271,13 @@ function placesShown(text, shown) {
 // is ringed (pick) in those lists' colours (l<places>). With a copy, its perks
 // are outlined (owned); one in a roll of a list shown that the copy completes
 // is ringed solid (hit) in those lists' colours, and any other perk a list
-// shown names is ringed dashed (named). A row keeps its classes (_ring) and is
-// only touched when they change.
+// shown names is ringed dashed (named). A perk the page's perk search picked
+// is outlined (found). A row keeps its classes (_ring) and is only touched
+// when they change.
 function paintGrid(grid) {
-    const shown = placeShown(grid.closest('.page'));
+    const page = grid.closest('.page');
+    const shown = placeShown(page);
+    const found = page._perks || [];
     const k = grid.closest('[data-g]').dataset.k;
     grid.classList.toggle('has-copy', Boolean(k));
     for (const li of grid.querySelectorAll('.pk')) {
@@ -248,6 +298,9 @@ function paintGrid(grid) {
         }
         if (places.length) {
             ring.push(state, 'l' + places.join('-'));
+        }
+        if (found.includes(li.dataset.tip)) {
+            ring.push('found');
         }
         const key = ring.join(' ');
         if ((li._ring || '') === key) {
@@ -539,6 +592,70 @@ function pickCopy(card, k) {
     }
 }
 
+// Perk search: each grid's perks, read from its template the first time a
+// search needs them (perks): the ones the weapon can roll (every row but own,
+// a perk only a copy has), the copies with each (data-o, their places on the
+// card), and each perk's name (its tooltip's) and kind (its column's label,
+// without the trait column's number).
+let perkIndex = null;
+
+function perks() {
+    if (perkIndex) {
+        return perkIndex;
+    }
+    const grids = new Map();
+    const kinds = new Map();
+    for (const t of document.querySelectorAll('template[id^="g"]')) {
+        const rolls = new Set();
+        const owners = new Map();
+        for (const col of t.content.querySelectorAll('.pc')) {
+            const kind = col.querySelector('.pc-label').textContent.replace(/ \d+$/, '');
+            for (const li of col.querySelectorAll('.pk')) {
+                const key = li.dataset.tip;
+                if (!li.classList.contains('own')) {
+                    rolls.add(key);
+                }
+                if (li.dataset.o) {
+                    owners.set(key, li.dataset.o.split(' '));
+                }
+                if (!kinds.has(key)) {
+                    kinds.set(key, kind);
+                }
+            }
+        }
+        grids.set(t.id.slice(1), { rolls, owners });
+    }
+    const names = new Map();
+    for (const key of kinds.keys()) {
+        names.set(key, document.getElementById('tip-' + key).querySelector('b').textContent);
+    }
+    perkIndex = { grids, kinds, names };
+    return perkIndex;
+}
+
+// The places (data-k) of a weapon card's copies with every perk keys names,
+// in the picker's order; all of them when keys is empty.
+function copiesWith(card, keys) {
+    const ks = [...card.querySelectorAll('.pr')].map((entry) => entry.dataset.k);
+    if (!keys.length) {
+        return ks;
+    }
+    const grid = perks().grids.get(card.querySelector('[data-g]').dataset.g);
+    if (!grid) {
+        return [];
+    }
+    return ks.filter((k) => keys.every((key) => (grid.owners.get(key) || []).includes(k)));
+}
+
+// Whether a Popular row's weapon can roll every perk keys names.
+function rollsAll(row, keys) {
+    if (!keys.length) {
+        return true;
+    }
+    const grid = perks().grids.get(row.querySelector('[data-g]').dataset.g);
+    return Boolean(grid) && keys.every((key) => grid.rolls.has(key));
+}
+
 // Grid hosts are watched as they come near the window (within 1000px): a host
 // marked stale (a switch changed while it was away, or Expand all opened its
 // card) opens then, so off-screen grids cost nothing until they're seen.
@@ -554,8 +671,9 @@ const watcher = new IntersectionObserver((entries) => {
 // Open the grid a host names (data-g: a Popular row's body, a weapon card's
 // main column): cloned from its template the first time, then sorted for the
 // side, its rings painted and its lines drawn. A weapon card's picker is
-// sorted for the side too, and shows its first copy until another is picked.
-// A resized grid redraws its lines.
+// sorted for the side too, and shows its first copy with the perks the page's
+// perk search picked (its first copy without a search) until another is
+// picked. A resized grid redraws its lines.
 const resizer = new ResizeObserver((entries) => {
     for (const e of entries) {
         applyFocus(e.target, e.target._focus || null);
@@ -584,7 +702,8 @@ function openGrid(host) {
         const picker = card.querySelector('.picker');
         sortBySide(picker);
         if (!host.dataset.k) {
-            checkCopy(card, picker.firstElementChild.dataset.k);
+            const k = copiesWith(card, card.closest('.page')._perks || [])[0];
+            checkCopy(card, k || picker.firstElementChild.dataset.k);
         }
     }
     for (const list of grid.querySelectorAll('.pl')) {
@@ -627,12 +746,19 @@ function setSide(card, side) {
     }
 }
 
-// Popular's filters: a row shows when its name holds the search, it is of the
-// type chosen, of a slot, an ammo type and an element chosen (any while none
-// is; a weapon whose versions come in several elements, of any of them), and
-// in the vault while In my vault is pressed. The count is the shown side's.
-function filterPopular(page) {
-    const search = page.querySelector('.search');
+// The toolbar's filters (m.filters, on Popular and the weapons page): a
+// Popular row or a weapon card shows when its name holds the search, it is of
+// the type chosen, of a slot, an ammo type and an element chosen (any while
+// none is; a weapon in several elements, of any of them), every pressed toggle
+// holds (In my vault on Popular; Dupes, more than one copy, and Has wishlist,
+// rolls in the list the wishlist switch shows or in any for All lists, on the
+// weapons page), and it has every perk the perk search picked (a Popular
+// weapon can roll them all, a card has a copy with them all). Each keeps
+// whether the filters but the perks show it (_others), which the perk search
+// counts from. The count is of Popular's side shown, or of the cards, whose
+// sections are recounted.
+function filterItems(page) {
+    const search = page.querySelector('.toolbar .search');
     if (!search) {
         return;
     }
@@ -641,42 +767,64 @@ function filterPopular(page) {
     const chosen = (name) => [...page.querySelectorAll(`.switch[data-filter="${name}"] [aria-pressed="true"]`)]
         .map((b) => b.dataset.value)
         .filter(Boolean);
+    const pressed = (name) => {
+        const b = page.querySelector(`button[data-filter="${name}"]`);
+        return Boolean(b) && b.getAttribute('aria-pressed') === 'true';
+    };
     const slots = chosen('slot');
     const ammo = chosen('ammo');
     const elements = chosen('element');
-    const owned = page.querySelector('[data-filter="owned"]').getAttribute('aria-pressed') === 'true';
+    const owned = pressed('owned');
+    const dupes = pressed('dupes');
+    const listed = pressed('listed');
+    const list = page.querySelector('.switch[data-key="wl"] [aria-pressed="true"]');
+    let wishlist = '*';
+    if (list) {
+        wishlist = list.dataset.value;
+    }
+    const keys = page._perks || [];
     let shown = 0;
     let total = 0;
-    for (const list of page.querySelectorAll('.pops')) {
-        for (const row of list.children) {
-            const show = (!q || row.dataset.n.includes(q))
-                && (!type || row.dataset.type === type)
-                && (!slots.length || slots.includes(row.dataset.slot))
-                && (!ammo.length || ammo.includes(row.dataset.ammo))
-                && (!elements.length || row.dataset.element.split(' ').some((e) => elements.includes(e)))
-                && (!owned || row.hasAttribute('data-owned'));
-            row.hidden = !show;
-            if (!list.hidden) {
-                total += 1;
-                shown += Number(show);
+    for (const item of page.querySelectorAll('.pop-row, .fam')) {
+        const lists = (item.dataset.listed || '').split(' ').filter(Boolean);
+        item._others = (!q || item.dataset.n.includes(q))
+            && (!type || item.dataset.type === type)
+            && (!slots.length || slots.includes(item.dataset.slot))
+            && (!ammo.length || ammo.includes(item.dataset.ammo))
+            && (!elements.length || item.dataset.element.split(' ').some((e) => elements.includes(e)))
+            && (!owned || item.hasAttribute('data-owned'))
+            && (!dupes || item.hasAttribute('data-dupes'))
+            && (!listed || (wishlist === '*' && lists.length > 0) || lists.includes(wishlist));
+        let show = item._others;
+        if (show && keys.length) {
+            if (item.classList.contains('fam')) {
+                show = copiesWith(item, keys).length > 0;
+            } else {
+                show = rollsAll(item, keys);
             }
+        }
+        item.hidden = !show;
+        if (!item.closest('.pops[hidden]')) {
+            total += 1;
+            shown += Number(show);
         }
     }
     page.querySelector('.shown').textContent = `${shown} of ${total} weapons`;
-    page.querySelector('.empty').hidden = shown > 0;
+    page.querySelector('p.empty').hidden = shown > 0;
+    countCards(page);
 }
 
 for (const page of document.querySelectorAll('.page')) {
-    filterPopular(page);
+    filterItems(page);
 }
 document.addEventListener('input', (e) => {
     if (e.target.matches('.search, .type-select')) {
-        filterPopular(e.target.closest('.page'));
+        filterItems(e.target.closest('.page'));
     }
 });
 document.addEventListener('change', (e) => {
     if (e.target.matches('.type-select')) {
-        filterPopular(e.target.closest('.page'));
+        filterItems(e.target.closest('.page'));
     }
 });
 
@@ -726,40 +874,310 @@ document.addEventListener('toggle', (e) => {
 }, true);
 
 // Switches: a page's elements show when their data-<key> names, among its
-// space-separated values, the pressed value of every switch with that key (one
-// of them for a multi switch, which can press several: the weapons page's
-// Element). Has wishlist (listed) stands for the list the wishlist switch
-// shows: listed-<key>, or listed-* for All lists. The weapon sections are
-// recounted.
+// space-separated values, the pressed value of every switch with that key: an
+// armor page's class, Popular's side, the wishlist lines in the weapon cards'
+// pickers. The grids open repaint, and the toolbar's filters run again (Has
+// wishlist follows the wishlist switch).
 function applySwitches(page) {
-    const list = page.querySelector('.switch[data-key="wl"] [aria-pressed="true"]');
-    const value = (b) => {
-        if (b.dataset.value === 'listed') {
-            return 'listed-' + (list ? list.dataset.value : '*');
-        }
-        return b.dataset.value;
-    };
     const keys = new Set([...page.querySelectorAll('.switch[data-key]')].map((sw) => sw.dataset.key));
     for (const key of keys) {
         const pressed = [...page.querySelectorAll(`.switch[data-key="${key}"]`)]
-            .map((sw) => [...sw.querySelectorAll('[aria-pressed="true"]')].map(value));
+            .map((sw) => [...sw.querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.value));
         for (const el of page.querySelectorAll('[data-' + key + ']')) {
             const shows = el.dataset[key].split(' ');
             el.hidden = !pressed.every((values) => values.some((v) => shows.includes(v)));
         }
     }
-    countCards(page);
     for (const grid of page.querySelectorAll('.pg')) {
         refresh(grid.closest('[data-g]'));
     }
-    filterPopular(page);
+    filterItems(page);
+}
+
+// Perk search (m.perk_search): the box suggests the perks the page searches
+// whose names hold what is typed, a copy's on the weapons page and any a
+// weapon can roll on Popular, each with its kind and how many of the weapons
+// the other filters show it would leave. Picking one (Enter or a click) makes
+// it a chip; a chip's x, or Backspace in the empty box, takes one off. The page
+// shows the weapons with every perk picked (_perks), a weapon card opening on
+// its first copy with them and its grid outlining them.
+
+// The perks a page's search offers: the ones a copy of yours has on the
+// weapons page, the ones a weapon can roll on Popular.
+function perksOffered(page) {
+    if (!page._offered) {
+        const { grids } = perks();
+        page._offered = new Set();
+        for (const host of page.querySelectorAll('[data-g]')) {
+            const grid = grids.get(host.dataset.g);
+            if (!grid) {
+                continue;
+            }
+            let keys = grid.rolls;
+            if (host.closest('.fam')) {
+                keys = grid.owners.keys();
+            }
+            for (const key of keys) {
+                page._offered.add(key);
+            }
+        }
+    }
+    return page._offered;
+}
+
+// A counter of the weapons the page's other filters show that would show with
+// every perk the keys it's given name: the cards with a copy with them all, or
+// the Popular rows of the side shown whose weapon can roll them all.
+function perkCounter(page) {
+    const { grids } = perks();
+    const cards = [...page.querySelectorAll('.fam')].filter((card) => card._others !== false);
+    if (page.querySelector('.fam')) {
+        const copies = cards.map((card) => ({
+            ks: [...card.querySelectorAll('.pr')].map((entry) => entry.dataset.k),
+            owners: (grids.get(card.querySelector('[data-g]').dataset.g) || { owners: new Map() }).owners,
+        }));
+        return (keys) => copies.filter(({ ks, owners }) => (
+            ks.some((k) => keys.every((key) => (owners.get(key) || []).includes(k)))
+        )).length;
+    }
+    const rolls = [...page.querySelectorAll('.pops:not([hidden]) > .pop-row')]
+        .filter((row) => row._others !== false)
+        .map((row) => (grids.get(row.querySelector('[data-g]').dataset.g) || { rolls: new Set() }).rolls);
+    return (keys) => rolls.filter((set) => keys.every((key) => set.has(key))).length;
+}
+
+// A suggestion: the perk's name, the typed part marked, its kind and its count.
+function perkOption(page, found, n, typed) {
+    const { kinds } = perks();
+    const li = document.createElement('li');
+    li.id = page.id + '-perk-' + n;
+    li.setAttribute('role', 'option');
+    li.dataset.n = n;
+    const name = document.createElement('span');
+    const mark = document.createElement('mark');
+    mark.textContent = found.name.slice(found.at, found.at + typed);
+    name.append(found.name.slice(0, found.at), mark, found.name.slice(found.at + typed));
+    const kind = document.createElement('span');
+    kind.className = 'kind';
+    kind.textContent = kinds.get(found.key);
+    const count = document.createElement('span');
+    count.className = 'count';
+    if (!found.n) {
+        li.classList.add('none');
+        count.textContent = 'none with these';
+    } else if (page.querySelector('.fam')) {
+        count.textContent = found.n + ' of yours';
+    } else {
+        count.textContent = `${found.n} weapon${found.n === 1 ? '' : 's'}`;
+    }
+    li.append(name, kind, count);
+    return li;
+}
+
+// Mark suggestion n the one Enter picks.
+function activate(page, n) {
+    page._active = n;
+    for (const li of page.querySelectorAll('.perk-suggest [role="option"]')) {
+        li.setAttribute('aria-selected', li.dataset.n === String(n));
+    }
+    page.querySelector('.perk-input').setAttribute('aria-activedescendant', page.id + '-perk-' + n);
+}
+
+function hideSuggest(page) {
+    page.querySelector('.perk-suggest').hidden = true;
+    const input = page.querySelector('.perk-input');
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+}
+
+// Suggest the perks for what is typed: those starting with it first, then
+// those with a word starting with it, each group by how many weapons it would
+// leave, then by name; eight at most.
+function suggestPerks(page) {
+    const input = page.querySelector('.perk-input');
+    const list = page.querySelector('.perk-suggest');
+    const typed = input.value.trim();
+    if (!typed) {
+        hideSuggest(page);
+        return;
+    }
+    const q = typed.toLowerCase();
+    const { names } = perks();
+    const picked = page._perks || [];
+    const count = perkCounter(page);
+    const found = [];
+    for (const key of perksOffered(page)) {
+        const name = names.get(key);
+        const at = name.toLowerCase().indexOf(q);
+        if (at < 0 || picked.includes(key)) {
+            continue;
+        }
+        let score = 2;
+        if (at === 0) {
+            score = 0;
+        } else if (/[\s-]/.test(name[at - 1])) {
+            score = 1;
+        }
+        found.push({ key, name, at, score, n: count([...picked, key]) });
+    }
+    found.sort((a, b) => a.score - b.score || b.n - a.n || a.name.localeCompare(b.name));
+    page._found = found.slice(0, 8);
+    list.replaceChildren(...page._found.map((f, n) => perkOption(page, f, n, q.length)));
+    if (!page._found.length) {
+        const li = document.createElement('li');
+        li.className = 'empty';
+        let where = 'a weapon can roll';
+        if (page.querySelector('.fam')) {
+            where = 'on your copies';
+        }
+        li.textContent = `No perk ${where} matches "${typed}".`;
+        list.append(li);
+    }
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    if (page._found.length) {
+        activate(page, 0);
+    }
+}
+
+// A page's picked perks as chips in its box, before the text it takes.
+function renderPerks(page) {
+    const { names, kinds } = perks();
+    const input = page.querySelector('.perk-input');
+    for (const chip of page.querySelectorAll('.perk-chip')) {
+        chip.remove();
+    }
+    for (const key of page._perks) {
+        const chip = document.createElement('span');
+        chip.className = 'perk-chip';
+        const kind = document.createElement('span');
+        kind.className = 'kind';
+        kind.textContent = kinds.get(key);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.dataset.key = key;
+        remove.setAttribute('aria-label', 'Remove ' + names.get(key));
+        remove.textContent = '\u00d7';
+        chip.append(names.get(key), kind, remove);
+        input.before(chip);
+    }
+    input.placeholder = 'Search perks';
+    if (page._perks.length) {
+        input.placeholder = 'Add a perk';
+    }
+}
+
+// Set a page's picked perks and show the weapons with them all: on the
+// weapons page each copy with them says so and an open card showing a copy
+// without them shows the first with them; the toolbar's filters run again and
+// the open grids repaint.
+function setPerks(page, keys) {
+    page._perks = keys;
+    renderPerks(page);
+    const cards = page.querySelectorAll('.fam');
+    for (const card of cards) {
+        const ks = copiesWith(card, keys);
+        for (const entry of card.querySelectorAll('.pr')) {
+            entry.querySelector('.has-perks').hidden = !keys.length || !ks.includes(entry.dataset.k);
+        }
+        const host = card.querySelector('[data-g]');
+        if (keys.length && ks.length && host.dataset.k && !ks.includes(host.dataset.k)) {
+            checkCopy(card, ks[0]);
+        }
+    }
+    filterItems(page);
+    for (const grid of page.querySelectorAll('.pg')) {
+        refresh(grid.closest('[data-g]'));
+    }
+}
+
+function pickPerk(page, n) {
+    const input = page.querySelector('.perk-input');
+    setPerks(page, [...(page._perks || []), page._found[n].key]);
+    input.value = '';
+    hideSuggest(page);
+    input.focus();
+}
+
+document.addEventListener('input', (e) => {
+    if (e.target.matches('.perk-input')) {
+        suggestPerks(e.target.closest('.page'));
+    }
+});
+document.addEventListener('focusin', (e) => {
+    if (e.target.matches('.perk-input')) {
+        suggestPerks(e.target.closest('.page'));
+    }
+});
+document.addEventListener('focusout', (e) => {
+    if (e.target.matches('.perk-input')) {
+        hideSuggest(e.target.closest('.page'));
+    }
+});
+document.addEventListener('keydown', (e) => {
+    if (!e.target.matches('.perk-input')) {
+        return;
+    }
+    const page = e.target.closest('.page');
+    const open = !page.querySelector('.perk-suggest').hidden && page._found && page._found.length;
+    if (e.key === 'ArrowDown' && open) {
+        e.preventDefault();
+        activate(page, (page._active + 1) % page._found.length);
+    } else if (e.key === 'ArrowUp' && open) {
+        e.preventDefault();
+        activate(page, (page._active - 1 + page._found.length) % page._found.length);
+    } else if (e.key === 'Enter' && open) {
+        e.preventDefault();
+        pickPerk(page, page._active);
+    } else if (e.key === 'Escape') {
+        hideSuggest(page);
+    } else if (e.key === 'Backspace' && !e.target.value && page._perks && page._perks.length) {
+        setPerks(page, page._perks.slice(0, -1));
+    }
+});
+// A suggestion picks on mousedown, before the box loses focus; a click in the
+// box focuses it, and a chip's x takes its perk off.
+document.addEventListener('mousedown', (e) => {
+    const option = e.target.closest('.perk-suggest [role="option"]');
+    if (option) {
+        e.preventDefault();
+        pickPerk(option.closest('.page'), Number(option.dataset.n));
+    }
+});
+document.addEventListener('click', (e) => {
+    const field = e.target.closest('.perk-field');
+    if (!field) {
+        return;
+    }
+    const page = field.closest('.page');
+    const remove = e.target.closest('.perk-chip button');
+    if (remove) {
+        setPerks(page, page._perks.filter((key) => key !== remove.dataset.key));
+    }
+    field.querySelector('.perk-input').focus();
+});
+
+// Clear a page's toolbar filters: the searches and the type, the multi
+// switches back to All and the filter toggles off (setPerks runs them).
+function clearFilters(page) {
+    page.querySelector('.toolbar .search').value = '';
+    page.querySelector('.type-select').value = '';
+    for (const sw of page.querySelectorAll('.toolbar .switch.multi')) {
+        for (const b of sw.children) {
+            b.setAttribute('aria-pressed', b === sw.firstElementChild);
+        }
+    }
+    for (const b of page.querySelectorAll('.toolbar button[data-filter]')) {
+        b.setAttribute('aria-pressed', 'false');
+    }
+    setPerks(page, []);
 }
 
 // My Copies: a weapons page card by its grid's id (a flagged copy's
 // keeper's, a Popular weapon's), on the side given, with copy k picked when
 // given. The weapons page shows first when another does (its own history
-// entry, so Back returns), the weapons switches go back to All when they hide
-// the card, its sections and the card open, and it scrolls into view, flashed.
+// entry, so Back returns), the toolbar's filters clear when they hide the
+// card, its sections and the card open, and it scrolls into view, flashed.
 function goToCard(grid, k, side) {
     const card = document.getElementById('fam-' + grid).closest('.fam');
     const page = card.closest('.page');
@@ -768,12 +1186,7 @@ function goToCard(grid, k, side) {
         route();
     }
     if (card.hidden) {
-        for (const sw of page.querySelectorAll('.switch[data-key="wpn"]')) {
-            for (const b of sw.children) {
-                b.setAttribute('aria-pressed', b === sw.firstElementChild);
-            }
-        }
-        applySwitches(page);
+        clearFilters(page);
     }
     for (let d = card.closest('details'); d; d = d.parentElement.closest('details')) {
         d.open = true;
@@ -797,10 +1210,11 @@ function goToCard(grid, k, side) {
 document.addEventListener('click', (e) => {
     // A switch: one button pressed at a time, the page's elements shown to
     // match (applySwitches). A multi switch's buttons each toggle beside its
-    // All, which clears them; a flip switch's one button flips. Both filter
-    // Popular, or for a multi switch with a key (the weapons page's Element)
-    // show the page's elements as the others do. A side switch sets the side
-    // of its weapon card, or of every card for the page's Popularity switch.
+    // All, which clears them, and a flip switch's buttons each flip: both run
+    // the toolbar's filters (filterItems), but the weapons page's order
+    // toggles (data-sort) order the cards (sortCards). A side switch sets the
+    // side of its weapon card, or of every card for the page's Popularity
+    // switch, which orders the cards again.
     const button = e.target.closest('.switch button');
     if (button && button.closest('.switch.multi')) {
         const all = button.parentElement.children[0];
@@ -813,14 +1227,14 @@ document.addEventListener('click', (e) => {
             const any = [...button.parentElement.children].some((b) => b !== all && b.getAttribute('aria-pressed') === 'true');
             all.setAttribute('aria-pressed', !any);
         }
-        if (button.parentElement.dataset.key) {
-            applySwitches(button.closest('.page'));
-        } else {
-            filterPopular(button.closest('.page'));
-        }
+        filterItems(button.closest('.page'));
     } else if (button && button.closest('.switch.flip')) {
         button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') !== 'true');
-        filterPopular(button.closest('.page'));
+        if (button.dataset.sort) {
+            sortCards(button.closest('.page'));
+        } else {
+            filterItems(button.closest('.page'));
+        }
     } else if (button && button.closest('.switch.side')) {
         for (const b of button.parentElement.children) {
             b.setAttribute('aria-pressed', b === button);
@@ -828,6 +1242,7 @@ document.addEventListener('click', (e) => {
         let cards = [button.closest('.fam')];
         if (!cards[0]) {
             cards = button.closest('.page').querySelectorAll('.fam');
+            sortCards(button.closest('.page'));
         }
         for (const card of cards) {
             setSide(card, button.dataset.value);

@@ -114,9 +114,10 @@ ORDER BY p.reason, v.name, p.instance_id
 # Roll Quality: every weapon copy left after pruning, on its card (the weapon its
 # version is scored as, so a family whose versions roll different trait pools
 # is a card per pool, else its family; k is its place there), by slot, weapon
-# type and card, each card's copies best PvE first. elements, archetypes, rpms
-# and origins count the card's distinct elements, frames, rounds per minute and
-# pairs of season and drop source. Per side (pve_, pvp_): the copy's popularity
+# type and card, each card's copies best PvE first. elements, archetypes,
+# breakers, rpms and origins count the card's distinct elements, frames,
+# champion breakers, rounds per minute and pairs of season and drop source.
+# Per side (pve_, pvp_): the copy's popularity
 # score, its heat (tenths), its rank on the card and its best trait pair with
 # its share and rank (v_copy_popularity), and the card's weapon's rank,
 # confidence and Endgame flag (v_popularity_weapon; NULL where it isn't
@@ -132,7 +133,8 @@ ROLL_COPIES = f"""
 WITH copy AS MATERIALIZED (
     SELECT c.card, c.entry, c.family, c.grid_id, c.k, v.instance_id, v.item_hash, v.name,
            v.slot, v.slot_order, v.wtype, v.wtype_icon, v.icon, v.watermark, v.ammo,
-           v.ammo_icon, v.element, v.element_icon, v.archetype, v.archetype_icon, v.gear_tier,
+           v.ammo_icon, v.element, v.element_icon, v.archetype, v.archetype_icon, v.breaker,
+           v.breaker_icon, v.gear_tier,
            v.is_locked, v.is_masterworked, v.tier_overlay, v.masterwork_overlay, v.rpm,
            v.season_num, v.season_name, v.season_date, v.source, d.tag, d.notes
     FROM v_weapon_card c
@@ -141,7 +143,7 @@ WITH copy AS MATERIALIZED (
 ),
 card AS (
     SELECT card, COUNT(DISTINCT element) AS elements, COUNT(DISTINCT archetype) AS archetypes,
-           COUNT(DISTINCT rpm) AS rpms,
+           COUNT(DISTINCT breaker) AS breakers, COUNT(DISTINCT rpm) AS rpms,
            COUNT(DISTINCT season_num || ' ' || season_name || ' ' || source) AS origins
     FROM copy
     GROUP BY card
@@ -208,7 +210,7 @@ tracker AS (
     FROM v_kill_tracker
     WHERE is_plugged AND kind IS NOT NULL
 )
-SELECT copy.*, card.elements, card.archetypes, card.rpms, card.origins,
+SELECT copy.*, card.elements, card.archetypes, card.breakers, card.rpms, card.origins,
        COALESCE(covered.covered, '') AS covered, wish.split,
        COALESCE(wish.matched, '') AS matched, COALESCE(wish.trash, '') AS trash,
        pop.pve_score, CAST(round(10 * pop.pve_score) AS INTEGER) AS pve_heat, pop.pve_rank,
@@ -231,24 +233,41 @@ LEFT JOIN tracker ON tracker.instance_id = copy.instance_id
 ORDER BY copy.slot_order, copy.wtype, copy.card, pop.pve_rank
 """
 
-# The elements of the copies on Roll Quality's cards (v_weapon's: a copy's
-# damage type, else its weapon's default), with their icons, in the game's
-# order (n, the damage type's enum value: Kinetic 1 to Strand 7): the weapons
-# page's Element switch.
-WEAPON_ELEMENTS = """
-SELECT DISTINCT v.element, v.element_icon, t.enumValue AS n
-FROM v_weapon_card c
-JOIN v_weapon v ON v.instance_id = c.instance_id
-LEFT JOIN DestinyDamageTypeDefinition t ON t.name = v.element
-ORDER BY n, v.element
+# The choices of the weapons page's filters, as POPULAR_OPTIONS gives
+# Popular's: each weapon type, slot (in bucket order), ammo type (with its
+# badge) and element (with its icon, in the game's order: the damage type's
+# enum value) among the copies on Roll Quality's cards, an element being a
+# copy's (v_weapon's: its damage type, else its weapon's default).
+WEAPON_OPTIONS = """
+WITH copy AS MATERIALIZED (
+    SELECT v.wtype, v.slot, v.slot_order, v.ammo, v.ammo_icon, v.element, v.element_icon
+    FROM v_weapon_card c
+    JOIN v_weapon v ON v.instance_id = c.instance_id
+)
+SELECT DISTINCT 'ammo' AS kind, ammo AS value,
+       upper(substr(ammo, 1, 1)) || substr(ammo, 2) AS label, ammo_icon AS icon,
+       CASE ammo WHEN 'primary' THEN 1 WHEN 'special' THEN 2 ELSE 3 END AS n
+FROM copy
+WHERE ammo != ''
+UNION
+SELECT DISTINCT 'element', c.element, c.element, c.element_icon, t.enumValue
+FROM copy c
+LEFT JOIN DestinyDamageTypeDefinition t ON t.name = c.element
+UNION
+SELECT DISTINCT 'slot', slot, replace(slot, ' Weapons', ''), '', slot_order
+FROM copy
+UNION
+SELECT DISTINCT 'type', wtype, wtype, '', 0
+FROM copy
+ORDER BY kind, n, value
 """
 
 # Popular, and the perk grids it and the weapons page open.
 
 # Each scored weapon's elements: its versions' (v_popularity_version) default
 # damage types (v_weapon_definition), more than one where a reissue changed
-# it, each with its icon and its place in the game's order (n, as in
-# WEAPON_ELEMENTS).
+# it, each with its icon and its place in the game's order (n, the damage
+# type's enum value: Kinetic 1 to Strand 7).
 POPULAR_ELEMENTS = """
 SELECT DISTINCT v.name, d.element, d.element_icon, t.enumValue AS n
 FROM v_popularity_version v
@@ -258,12 +277,13 @@ LEFT JOIN DestinyDamageTypeDefinition t ON t.name = d.element
 
 # Every weapon d2-perk-popularity scores, per side in rank order, as the Popular
 # page lists it: its popularity there (v_popularity_weapon), its representative
-# version's looks (v_weapon_definition: icon, slot, ammo, season and source),
-# element, every element its versions come in (POPULAR_ELEMENTS) in the game's
-# order, space-separated, its Endgame badge on each side, how many vault copies
-# its versions have, card (1 when Roll Quality has a card for it: a copy left
-# after pruning), and top_perks, each scored column's most picked perk (its
-# v_perk plug hash) in socket order, space-separated.
+# version's looks (v_weapon_definition: icon, slot, ammo, season, source and the
+# champion breaker its frame gives), element, every element its versions come
+# in (POPULAR_ELEMENTS) in the game's order, space-separated, its Endgame badge
+# on each side, how many vault copies its versions have, card (1 when Roll
+# Quality has a card for it: a copy left after pruning), and top_perks, each
+# scored column's most picked perk (its v_perk plug hash) in socket order,
+# space-separated.
 POPULARITY = f"""
 WITH owned AS (
     SELECT v.name, COUNT(*) AS owned
@@ -293,7 +313,8 @@ element AS (
     GROUP BY name
 )
 SELECT w.*, d.icon, d.watermark, d.slot, d.slot_order, d.ammo, d.ammo_icon, d.season_num,
-       d.season_name, d.source, COALESCE(el.element, '') AS element,
+       d.season_name, d.source, d.breaker, d.breaker_icon,
+       COALESCE(el.element, '') AS element,
        COALESCE(o.owned, 0) AS owned, c.grid_id IS NOT NULL AS card,
        COALESCE(e.pve_endgame, 0) AS pve_endgame, COALESCE(e.pvp_endgame, 0) AS pvp_endgame,
        COALESCE(t.top_perks, '') AS top_perks
@@ -709,7 +730,7 @@ def load(conn) -> dict:
         'purge_counts': rows(PURGE_COUNTS),
         'weapon_flags': rows(WEAPON_FLAGS),
         'roll_copies': rows(ROLL_COPIES),
-        'weapon_elements': rows(WEAPON_ELEMENTS),
+        'weapon_options': rows(WEAPON_OPTIONS),
         'popularity': rows(POPULARITY),
         'popular_columns': rows(POPULAR_COLUMNS),
         'popular_pairs': rows(POPULAR_PAIRS),

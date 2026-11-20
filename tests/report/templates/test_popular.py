@@ -45,6 +45,35 @@ def test_the_side_switch_counts_each_sides_weapons_and_the_toolbar_offers_their_
     assert '<div class="switch flip" role="group" aria-label="Vault">' in page
 
 
+def test_the_perk_search_follows_the_weapon_search(conn, tmp_path):
+    # Its box, empty, with its suggestions' list (report.js fills both).
+    add_scored(conn)
+    page = popular_page(conn, tmp_path)
+    assert (
+        '<input class="search" type="search" placeholder="Search weapons" '
+        'aria-label="Search weapons">\n'
+        '<div class="perk-find"><div class="perk-field"><input class="perk-input" type="text" '
+        'role="combobox" aria-expanded="false" aria-autocomplete="list" '
+        'aria-controls="perks-popular" aria-label="Search perks" placeholder="Search perks" '
+        'autocomplete="off" spellcheck="false"></div><ul class="perk-suggest" id="perks-popular" '
+        'role="listbox" aria-label="Perks" hidden></ul></div>'
+    ) in page
+
+
+def test_a_rows_icon_shows_the_breaker_its_frame_gives(conn, tmp_path):
+    c.add_breaker(conn, c.INTRINSIC_ADAPTIVE, 'Shield Piercing', 'Barrier')
+    add_scored(conn)
+    page = popular_page(conn, tmp_path)
+    gun = page.split('data-n="gun (pantheon)"')[1].split('</article>')[0]
+    assert (
+        '<span class="wicon" role="img" aria-label="Auto Rifle · Shield Piercing breaker">' in gun
+    )
+    assert (
+        '<img class="breaker" src="https://www.bungie.net/img/shield_piercing.png" alt="" '
+        'title="Breaker: Shield Piercing" loading="lazy"></span><span class="fam-name">'
+    ) in gun
+
+
 def test_a_row_names_its_pool_badges_and_most_picked_and_opens_its_grid(conn, tmp_path):
     add_scored(conn)
     page = popular_page(conn, tmp_path)

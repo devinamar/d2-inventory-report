@@ -65,6 +65,22 @@ def add_lists(conn, rolls, matches):
         conn.executemany("INSERT INTO instance_wishlist_match VALUES (?, ?)", matches)
 
 
+def test_a_cards_breakers_count_its_copies_frames_breakers(conn):
+    # The rifle's copy a keeps Adaptive Frame (Shield Piercing); b has
+    # Aggressive Frame (Stagger) in socket 0: the card has two breakers.
+    c.add_breaker(conn, c.INTRINSIC_ADAPTIVE, 'Shield Piercing', 'Barrier')
+    c.add_breaker(conn, c.INTRINSIC_AGGRESSIVE, 'Stagger', 'Unstoppable')
+    add_rifle(conn)
+    add_rifle_copy(conn, 'a', [c.TRAIT_PERK_A], 4, 0)
+    c.add_copy(conn, 'b', 100, [c.INTRINSIC_AGGRESSIVE, c.TRAIT_PERK_A], {1: [c.TRAIT_PERK_A]})
+    with conn:
+        conn.execute("INSERT INTO weapon_result VALUES ('b', 0, 1)")
+    assert rows(conn, load.ROLL_COPIES, 'instance_id', 'breaker', 'breakers') == [
+        ('a', 'Shield Piercing', 2),
+        ('b', 'Stagger', 2),
+    ]
+
+
 def test_roll_copies_rank_each_cards_copies_by_popularity(conn):
     # Every card with a copy left, by name: the Solo Rifle's one copy, then
     # the Test Rifle's, scored on PvE by its trait column. b's Rampage and c's
@@ -125,23 +141,34 @@ def test_roll_copies_rank_each_cards_copies_by_popularity(conn):
     assert (totals['matched'], totals['uncovered']) == (3, 1)
 
 
-def test_the_weapons_pages_elements_are_its_cards_copies_in_the_games_order(conn):
-    # A copy's element is its own (the Arc and Solar copies of the Kinetic
-    # Test Rifle) or its weapon's (the third copy). The Void Old Rifle, below
-    # Legendary, is flagged and on no card, so the switch doesn't offer Void.
-    add_rifle(conn)
-    add_rifle_copy(conn, 'solar', [c.TRAIT_PERK_A], 5, 0, damage_type=3)
-    add_rifle_copy(conn, 'arc', [c.TRAIT_PERK_A], 5, 0, damage_type=2)
-    add_rifle_copy(conn, 'kinetic', [c.TRAIT_PERK_A], 5, 0)
-    c.add_weapon_def(conn, 300, name='Old Rifle', tier=3, damage_type=4)
+def test_the_weapons_pages_options_are_its_cards_kinds(conn):
+    # A heavy Rocket Launcher (Void) and a primary Auto Rifle whose copies are
+    # Arc and its own Kinetic; the special Old Rifle (Solar), below Legendary,
+    # is flagged and on no card. Ammo in ammo order, elements in the game's
+    # order, each with its badge; the slot by its bucket.
+    with conn:
+        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
+    c.add_weapon_def(
+        conn, 100, name='Rocket', ammoType=3, damage_type=4, itemTypeDisplayName='Rocket Launcher'
+    )
+    c.add_weapon_def(conn, 200, name='Rifle', ammoType=1)
+    c.add_weapon_def(conn, 300, name='Old Rifle', tier=3, ammoType=2, damage_type=3)
+    for instance_id, item_hash, element in (('a', 100, None), ('b', 200, 2), ('c', 200, None)):
+        c.add_copy(conn, instance_id, item_hash, damage_type=element)
     c.add_copy(conn, 'old', 300)
     with conn:
+        conn.executemany("INSERT INTO weapon_result VALUES (?, 0, 0)", [('a',), ('b',), ('c',)])
         conn.execute("INSERT INTO weapon_pruning VALUES ('old', 'below_legendary', NULL)")
-        conn.execute("UPDATE DestinyDamageTypeDefinition SET icon = '/' || lower(name) || '.png'")
-    assert rows(conn, load.WEAPON_ELEMENTS, 'element', 'element_icon') == [
-        ('Kinetic', 'https://www.bungie.net/kinetic.png'),
-        ('Arc', 'https://www.bungie.net/arc.png'),
-        ('Solar', 'https://www.bungie.net/solar.png'),
+    ammo = 'https://www.bungie.net/img/destiny_content/ammo_types/'
+    assert rows(conn, load.WEAPON_OPTIONS, 'kind', 'value', 'label', 'icon') == [
+        ('ammo', 'primary', 'Primary', ammo + 'primary.png'),
+        ('ammo', 'heavy', 'Heavy', ammo + 'heavy.png'),
+        ('element', 'Kinetic', 'Kinetic', 'https://www.bungie.net/kinetic.png'),
+        ('element', 'Arc', 'Arc', 'https://www.bungie.net/arc.png'),
+        ('element', 'Void', 'Void', 'https://www.bungie.net/void.png'),
+        ('slot', 'Kinetic Weapons', 'Kinetic', ''),
+        ('type', 'Auto Rifle', 'Auto Rifle', ''),
+        ('type', 'Rocket Launcher', 'Rocket Launcher', ''),
     ]
 
 
@@ -405,6 +432,18 @@ def test_popularity_lists_each_side_in_rank_order_with_its_looks_and_vault(conn)
         ('pve', 'Rifle', 1, 'primary', 'Kinetic Weapons', 0, 0, 0, ''),
         ('pve', 'Gun', 2, 'special', 'Kinetic Weapons', 2, 1, 0, '2002 1001 1003'),
         ('pvp', 'Gun', 1, 'special', 'Kinetic Weapons', 2, 1, 0, '2002'),
+    ]
+
+
+def test_a_popular_weapon_has_the_breaker_its_frame_gives(conn):
+    # Gun and Rifle start with Adaptive Frame, which gives Shield Piercing.
+    c.add_breaker(conn, c.INTRINSIC_ADAPTIVE, 'Shield Piercing', 'Barrier')
+    add_scored_guns(conn)
+    icon = 'https://www.bungie.net/img/shield_piercing.png'
+    assert rows(conn, load.POPULARITY, 'name', 'breaker', 'breaker_icon') == [
+        ('Rifle', 'Shield Piercing', icon),
+        ('Gun', 'Shield Piercing', icon),
+        ('Gun', 'Shield Piercing', icon),
     ]
 
 

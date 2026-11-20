@@ -191,6 +191,9 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .review p { margin: 0; color: var(--ink-mid); }
 .wicon { position: relative; width: 48px; height: 48px; flex: none; border-radius: 4px; overflow: hidden; background: var(--line); }
 .wicon img { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* A weapon's champion breaker, as DIM shows it: the breaker type's icon in
+   the bottom right corner of the weapon's icon, on a dark disc. */
+.wicon img.breaker { inset: auto 1px 1px auto; width: 38%; height: 38%; padding: 2px; border-radius: 50%; background: color-mix(in oklab, var(--bg) 80%, transparent); }
 .switch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .switch + .switch { padding-left: 14px; border-left: 1px solid var(--line); }
 /* A card scrolls in below the sticky header; one My Copies lands on is
@@ -199,6 +202,9 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .fam.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { from { box-shadow: 0 0 0 2px var(--keep); } to { box-shadow: 0 0 0 2px transparent; } }
 .fams { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 20px; }
+/* A list of cards with none in it: a slot's by popularity, or the one list,
+   while their order isn't on. */
+.fams:empty { display: none; }
 .fam-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 14px 20px; }
 .fam-head h5 { margin: 0; font: 700 26px/1.15 var(--head); color: var(--ink-hi); }
 /* A card's confidence chip at the top right, light.gg and Copy IDs under it,
@@ -265,6 +271,9 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .pr-pop.c4 { color: var(--h4); } .pr-pop.c5 { color: var(--h5); } .pr-pop.c6 { color: var(--h6); } .pr-pop.c7 { color: var(--h7); }
 .pr-pop.c8 { color: var(--h8); } .pr-pop.c9 { color: var(--h9); } .pr-pop.c10 { color: var(--h10); }
 .pr-id { font: 10px var(--mono); color: var(--info); overflow-wrap: anywhere; }
+/* A copy with every perk the perk search picked, its dot the white of their outline. */
+.pr .has-perks { font-weight: 600; color: var(--ink-hi); }
+.pr .has-perks::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border: 2px solid var(--ink-hi); border-radius: 50%; }
 .version { font-size: 12px; color: var(--muted); }
 .pr-wish { display: flex; flex-wrap: wrap; gap: 2px 10px; }
 .pr-wish span { display: inline-flex; align-items: center; }
@@ -433,8 +442,8 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 /* A trait that matters on neither count recedes: not among the side's five
    most picked pairs, below 30% of its column's top, not the copy's and not
    wishlisted; a focused trait's dimming (dim) takes over from it. */
-[data-side="pve"] .pk.qa:not(.owned, .named, .hit, .focus, .partner, .dim),
-[data-side="pvp"] .pk.qb:not(.owned, .named, .hit, .focus, .partner, .dim) { opacity: 0.5; }
+[data-side="pve"] .pk.qa:not(.owned, .named, .hit, .focus, .partner, .dim, .found),
+[data-side="pvp"] .pk.qb:not(.owned, .named, .hit, .focus, .partner, .dim, .found) { opacity: 0.5; }
 .pk.qa:hover, .pk.qb:hover, .pk.qa:focus-visible, .pk.qb:focus-visible { opacity: 1; }
 /* The copy shown on a weapon card: its perks outlined twice in their heat,
    like the pair lines, over a strong heat fill; the perks it lacks step back
@@ -448,6 +457,8 @@ tbody th { font-weight: 600; color: var(--ink-hi); }
 .pg.has-copy .pk:not(.owned, .partner, .focus)::before { background-image: linear-gradient(#14140e8c, #14140e8c), var(--i); }
 .pg.has-copy .pk:is(.partner, .focus) > span { color: var(--ink-mid); }
 .pc[data-col^="trait"] .pk { cursor: pointer; }
+/* A perk the page's perk search picked, outlined in white. */
+.pk.found { outline: 2px solid var(--ink-hi); outline-offset: 2px; }
 .pk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* A focused trait and its partners are outlined in their heat, the colour of
    their pair lines; a partner shows the pair's share of all the weapon's
@@ -524,6 +535,24 @@ svg.defs { position: absolute; }
 .search:focus-visible, .type-select:focus-visible { outline: 2px solid var(--keep); outline-offset: 2px; }
 .type-select { min-height: 44px; padding: 0 12px; border-radius: 22px; border: 1px solid var(--line-hi); background: var(--card); color: var(--ink-mid); font: 600 15px var(--body); }
 .shown { font: 13px var(--mono); color: var(--muted); }
+/* The perk search: picked perks as chips in its box, its suggestions under it,
+   each with its kind and how many weapons it would leave. */
+.perk-find { position: relative; flex: 1 1 340px; min-width: 0; max-width: 620px; }
+.perk-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; padding: 5px 14px; border: 1px solid var(--line-hi); border-radius: 22px; background: var(--card); cursor: text; }
+.perk-field:focus-within { outline: 2px solid var(--keep); outline-offset: 2px; }
+.perk-input { flex: 1 1 140px; min-width: 100px; padding: 4px 0; border: 0; outline: 0; background: transparent; color: var(--ink-hi); font: 15px var(--body); }
+.perk-input::placeholder { color: var(--faint); }
+.perk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 3px 2px 10px; border: 1px solid var(--ink-hi); border-radius: 14px; color: var(--ink-hi); font: 600 13px var(--body); white-space: nowrap; }
+.perk-chip .kind, .perk-suggest .kind { font: 11px var(--mono); color: var(--muted); }
+.perk-chip button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 11px; background: var(--line); color: var(--ink-hi); cursor: pointer; font: 600 13px/1 var(--body); }
+.perk-chip button:focus-visible { outline: 2px solid var(--keep); outline-offset: 2px; }
+.perk-suggest { position: absolute; z-index: 4; left: 0; right: 0; top: calc(100% + 6px); margin: 0; padding: 6px; list-style: none; border: 1px solid var(--line-hi); border-radius: 10px; background: var(--tile); box-shadow: 0 12px 30px #0008; }
+.perk-suggest li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 12px; padding: 7px 10px; border-radius: 7px; color: var(--ink-hi); font-size: 14px; cursor: pointer; }
+.perk-suggest li[aria-selected="true"] { background: var(--line); }
+.perk-suggest mark { background: none; color: var(--keep); font-weight: 700; }
+.perk-suggest .count { min-width: 9ch; font: 12px var(--mono); color: var(--ink-mid); text-align: right; }
+.perk-suggest li.none, .perk-suggest li.none .count { color: var(--muted); }
+.perk-suggest li.empty { display: block; color: var(--muted); cursor: default; }
 .pops { display: flex; flex-direction: column; gap: 10px; }
 .pop-row > header { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; padding: 14px 20px; }
 .pop-rank { font: 500 26px var(--mono); color: var(--ink-hi); text-align: right; }

@@ -35,11 +35,7 @@
 {% endif %}
 {{ m.legend(false) }}
 <div class="toolbar">
-<input class="search" type="search" placeholder="Search weapons" aria-label="Search weapons">
-<select class="type-select" aria-label="Weapon type"><option value="">All types</option>{% for o in options.get('type', []) %}<option>{{ o.value }}</option>{% endfor %}</select>
-<div class="switch multi" role="group" aria-label="Slot" data-filter="slot"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('slot', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false">{{ o.label }}</button>{% endfor %}</div>
-<div class="switch multi" role="group" aria-label="Ammo" data-filter="ammo"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('ammo', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false"><img src="{{ o.icon }}" alt="">{{ o.label }}</button>{% endfor %}</div>
-<div class="switch multi" role="group" aria-label="Element" data-filter="element"><button type="button" data-value="" aria-pressed="true">All</button>{% for o in options.get('element', []) %}<button type="button" data-value="{{ o.value }}" aria-pressed="false">{% if o.icon %}<img src="{{ o.icon }}" alt="">{% endif %}{{ o.label }}</button>{% endfor %}</div>
+{{ m.filters(options, 'popular') }}
 <div class="switch flip" role="group" aria-label="Vault"><button type="button" data-filter="owned" aria-pressed="false">In my vault</button></div>
 <span class="shown"></span>
 </div>
@@ -51,7 +47,7 @@
 <header>
 <span class="pop-rank">#{{ w.rank }}</span>
 <div class="pop-name">
-<h5><button type="button" class="toggle" aria-expanded="false" aria-controls="pv-{{ side }}-{{ w.grid_id }}">{{ m.chevron() }}<span class="wicon" role="img" aria-label="{{ w.type }}">{% if w.icon %}<img src="{{ w.icon }}" alt="" loading="lazy">{% endif %}{% if w.watermark %}<img src="{{ w.watermark }}" alt="" loading="lazy">{% endif %}</span><span class="fam-name"><span class="fam-title">{{ w.family }}{% if w.ammo %}<img class="ammo" src="{{ w.ammo_icon }}" alt="{{ w.ammo|capitalize }} ammo" title="{{ w.ammo|capitalize }} ammo" loading="lazy">{% endif %}</span>{% if w.pool %}<span class="fam-pool">{{ w.pool }}</span>{% endif %}</span></button></h5>
+<h5><button type="button" class="toggle" aria-expanded="false" aria-controls="pv-{{ side }}-{{ w.grid_id }}">{{ m.chevron() }}<span class="wicon" role="img" aria-label="{{ w.type }}{% if w.breaker %} · {{ w.breaker }} breaker{% endif %}">{% if w.icon %}<img src="{{ w.icon }}" alt="" loading="lazy">{% endif %}{% if w.watermark %}<img src="{{ w.watermark }}" alt="" loading="lazy">{% endif %}{{ m.breaker(w) }}</span><span class="fam-name"><span class="fam-title">{{ w.family }}{% if w.ammo %}<img class="ammo" src="{{ w.ammo_icon }}" alt="{{ w.ammo|capitalize }} ammo" title="{{ w.ammo|capitalize }} ammo" loading="lazy">{% endif %}</span>{% if w.pool %}<span class="fam-pool">{{ w.pool }}</span>{% endif %}</span></button></h5>
 {% if elements %}
 {# Its element, or each one its versions come in where a reissue changed it, in the Element filter's order. #}
 <span class="elements">{% for o in options.get('element', []) if o.value in elements %}<span class="element">{% if o.icon %}<img src="{{ o.icon }}" alt="" loading="lazy">{% endif %}{{ o.label }}</span>{% endfor %}</span>
