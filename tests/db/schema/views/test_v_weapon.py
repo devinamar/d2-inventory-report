@@ -96,6 +96,22 @@ def test_archetype_is_the_copys_intrinsic_else_the_starting_one(conn):
     assert empty['archetype'] == 'Adaptive Frame'
 
 
+def test_breaker_is_the_copys_frames_else_the_starting_ones(conn):
+    # The weapon starts with Adaptive Frame (Shield Piercing); one copy has
+    # Aggressive Frame (Stagger) in socket 0, the other an empty socket.
+    c.add_breaker(conn, c.INTRINSIC_ADAPTIVE, 'Shield Piercing', 'Barrier')
+    c.add_breaker(conn, c.INTRINSIC_AGGRESSIVE, 'Stagger', 'Unstoppable')
+    c.add_weapon_def(conn, 100)
+    c.add_copy(conn, 'own', 100, [c.INTRINSIC_AGGRESSIVE, *SOCKETS[1:]])
+    c.add_copy(conn, 'empty', 100, [None, *SOCKETS[1:]])
+    own, empty = weapon(conn, 'own'), weapon(conn, 'empty')
+    assert (own['breaker'], own['breaker_icon']) == (
+        'Stagger',
+        'https://www.bungie.net/img/stagger.png',
+    )
+    assert empty['breaker'] == 'Shield Piercing'
+
+
 def test_rpm_and_lock_state(conn):
     # State 1 is Bungie's Locked flag (4 is Masterwork).
     c.add_weapon_def(conn, 100)

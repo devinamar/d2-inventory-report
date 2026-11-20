@@ -134,5 +134,16 @@ CREATE TABLE DestinyInventoryItemDefinition (
     --     are displayed in the game UI."
     -- A plug can list the same stat twice. Like [{"statTypeHash": 1735777505,
     -- "value": 5}, {"statTypeHash": 4244567218, "value": -5}].
-    investmentStats         TEXT NOT NULL DEFAULT '[]'
+    investmentStats         TEXT NOT NULL DEFAULT '[]',
+    -- perks: "If the item has any *intrinsic* Perks (Perks that it will provide
+    -- regardless of Sockets, Talent Grid, and other transitory state), they
+    -- will be defined here." Kept for plugs: a weapon's intrinsic frame lists
+    -- the champion breaker it gives the weapon among them (v_plug_breaker). []
+    -- for other items. A JSON array of DestinyItemPerkEntryDefinition ("An
+    -- intrinsic perk on an item, and the requirements for it to be
+    -- activated."):
+    --   perkHash: "A hash identifier for the DestinySandboxPerkDefinition being
+    --     provided on the item."
+    -- Like [{"perkHash": 1907936296}, {"perkHash": 3469621377}].
+    perks                   TEXT NOT NULL DEFAULT '[]'
 );

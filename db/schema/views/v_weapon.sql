@@ -1,7 +1,9 @@
 -- One row per weapon copy, with its definition (v_weapon_definition) and what
 -- the copy changes. element is the copy's damage type, else the weapon's
 -- default, and element_icon its icon; archetype is the intrinsic in the copy's
--- socket 0, else the one the weapon starts with; rpm is the copy's
+-- socket 0, else the one the weapon starts with, and breaker and breaker_icon
+-- the champion breaker that intrinsic gives (v_plug_breaker), else the
+-- weapon's; rpm is the copy's
 -- rounds-per-minute stat. tier_overlay is the pip image for the copy's gear
 -- tier, and masterwork_overlay the gold border of a masterworked copy (the
 -- exotic one for an exotic), from the constants table's one row; each '' when
@@ -16,6 +18,8 @@ SELECT i.itemInstanceId AS instance_id, i.itemHash AS item_hash, w.name, w.famil
             ELSE 'https://www.bungie.net' || dt.icon END AS element_icon,
        COALESCE(NULLIF(cp.name, ''), w.archetype) AS archetype,
        COALESCE(NULLIF(cp.icon, ''), w.archetype_icon) AS archetype_icon,
+       COALESCE(cb.breaker, w.breaker) AS breaker,
+       COALESCE(cb.breaker_icon, w.breaker_icon) AS breaker_icon,
        COALESCE(st.stats ->> ('$."' || sk.statHash || '"'), 0) AS rpm,
        COALESCE(n.value, 0) AS power, n.gearTier AS gear_tier, i.state & 1 AS is_locked,
        (i.state & 4) > 0 AS is_masterworked, COALESCE(n.isEquipped, 0) AS is_equipped,
@@ -30,6 +34,7 @@ LEFT JOIN DestinyItemInstanceComponent n ON n.itemInstanceId = i.itemInstanceId
 LEFT JOIN DestinyDamageTypeDefinition dt ON dt.hash = n.damageTypeHash
 LEFT JOIN DestinyItemSocketsComponent s ON s.itemInstanceId = i.itemInstanceId
 LEFT JOIN v_plug cp ON cp.hash = s.sockets ->> '$[0].plugHash'
+LEFT JOIN v_plug_breaker cb ON cb.plug_hash = s.sockets ->> '$[0].plugHash'
 LEFT JOIN stat_key sk ON sk.key = 'rpm'
 LEFT JOIN DestinyItemStatsComponent st ON st.itemInstanceId = i.itemInstanceId
 LEFT JOIN v_gear_tier gt ON gt.tier = n.gearTier

@@ -2,7 +2,9 @@
 -- that can be applied situationally." Bungie's full description adds that
 -- perks determine a weapon's damage type and bestow the benefits of mods, and
 -- that only some are human readable. Rows kept: the perks the stored armor
--- sets confer.
+-- sets confer, and those of the intrinsic plugs (a weapon's frame), one of
+-- which names the champion breaker the frame gives, like "[Stagger]
+-- Unstoppable".
 CREATE TABLE DestinySandboxPerkDefinition (
     -- "The unique identifier for this entity. Guaranteed to be unique for the
     -- type of entity, but not globally. When entities refer to each other in

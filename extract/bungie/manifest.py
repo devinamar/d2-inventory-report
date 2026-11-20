@@ -43,12 +43,17 @@ ITEM_COLUMNS = (
     'plugCategoryIdentifier',
     'socketEntries',
     'investmentStats',
+    'perks',
 )
 
 # The fields of each nested entry the app reads, kept in the JSON columns.
 SOCKET_ENTRY_FIELDS = ('singleInitialItemHash', 'randomizedPlugSetHash', 'reusablePlugSetHash')
 INLINE_PLUG_FIELDS = ('plugItemHash',)
 INVESTMENT_STAT_FIELDS = ('statTypeHash', 'value')
+PERK_FIELDS = ('perkHash',)
+# The plug category of a weapon's intrinsic (its frame), whose perks include
+# the champion breaker it gives the weapon.
+INTRINSICS = 'intrinsics'
 PLUG_SET_ITEM_FIELDS = ('plugItemHash', 'currentlyCanRoll')
 SET_PERK_FIELDS = ('requiredSetCount', 'sandboxPerkHash')
 
@@ -81,8 +86,8 @@ def item_row(obj) -> tuple:
     # A DestinyInventoryItemDefinition row (ITEM_COLUMNS): the fields the app
     # reads, as the manifest has them. plugCategoryIdentifier is '' for a plug
     # without one and NULL for an item that isn't a plug. socketEntries is
-    # kept for weapons and armor (trimmed_sockets) and investmentStats for
-    # plugs, the only ones the app reads; each is [] otherwise.
+    # kept for weapons and armor (trimmed_sockets), and investmentStats and
+    # perks for plugs, the only ones the app reads; each is [] otherwise.
     props = obj.get('displayProperties') or {}
     inventory = obj.get('inventory') or {}
     plug = obj.get('plug')
@@ -98,8 +103,10 @@ def item_row(obj) -> tuple:
     if obj.get('itemType') in (WEAPON_ITEM_TYPE, ARMOR_ITEM_TYPE):
         socket_entries = (obj.get('sockets') or {}).get('socketEntries')
     investment_stats = []
+    perks = []
     if category is not None:
         investment_stats = obj.get('investmentStats')
+        perks = obj.get('perks')
     return (
         obj['hash'],
         props.get('name'),
@@ -119,6 +126,7 @@ def item_row(obj) -> tuple:
         category,
         trimmed_sockets(socket_entries),
         trimmed(investment_stats, INVESTMENT_STAT_FIELDS),
+        trimmed(perks, PERK_FIELDS),
     )
 
 
@@ -216,9 +224,12 @@ def ingest_manifest(conn, manifest_path, version: str) -> bool:
             if is_plug:
                 plugs += 1
                 objective_hashes.update((obj.get('objectives') or {}).get('objectiveHashes') or [])
+                if obj['plug'].get('plugCategoryIdentifier') == INTRINSICS:
+                    perk_hashes.update(perk.get('perkHash') for perk in obj.get('perks') or [])
 
         # What the items name: their buckets, the weapons' collectibles, the
-        # plugs' objectives and the set bonuses' perks.
+        # plugs' objectives, and the perks of the set bonuses and intrinsic
+        # plugs.
         bucket_rows = [
             (o['hash'], (o.get('displayProperties') or {}).get('name'), o.get('bucketOrder'))
             for o in definitions(mconn, 'DestinyInventoryBucketDefinition')

@@ -21,6 +21,10 @@ FATEBRINGER = {
     'defaultDamageTypeHash': 3373582085,
     'equippingBlock': {'ammoType': 1},
     'inventory': {'tierType': 5, 'bucketTypeHash': 1498876634},
+    'perks': [
+        {'requirementDisplayString': '', 'perkHash': 2348883558, 'perkVisibility': 0},
+        {'requirementDisplayString': '', 'perkHash': 3341936815, 'perkVisibility': 0},
+    ],
     'sockets': {
         'socketEntries': [
             {
@@ -68,6 +72,10 @@ ADAPTIVE_FRAME = {
     'classType': 3,
     'inventory': {'tierType': 5, 'bucketTypeHash': 1469714392},
     'plug': {'plugCategoryIdentifier': 'intrinsics'},
+    'perks': [
+        {'requirementDisplayString': '', 'perkHash': 1907936296, 'perkVisibility': 0},
+        {'requirementDisplayString': '', 'perkHash': 3469621377, 'perkVisibility': 0},
+    ],
 }
 # A Hunter cloak, which is an ornament plug too. Its cosmetics socket names
 # COSMETICS, the list of 712 it can switch to (trimmed to two here).
@@ -169,6 +177,7 @@ TUNING_MOD = {
         {'statTypeHash': 1735777505, 'value': 5, 'isConditionallyActive': False},
         {'statTypeHash': 4244567218, 'value': -5, 'isConditionallyActive': False},
     ],
+    'perks': [{'requirementDisplayString': '', 'perkHash': 4248247583, 'perkVisibility': 0}],
 }
 # An armor set and its two bonuses.
 ATHEONS_MEMORY = {
@@ -181,6 +190,11 @@ ATHEONS_MEMORY = {
 }
 RADIOLARIA_BREACH = {'hash': 17188252, 'displayProperties': {'name': 'Radiolaria Breach'}}
 COLLECTIVE_POWER = {'hash': 17188253, 'displayProperties': {'name': 'Collective Power'}}
+# Adaptive Frame's perks (its own, and the champion breaker it gives) and the
+# tuning mod's, which isn't an intrinsic.
+ADAPTIVE_FRAME_PERK = {'hash': 1907936296, 'displayProperties': {'name': 'Adaptive Frame'}}
+BARRIER = {'hash': 3469621377, 'displayProperties': {'name': '[Shield-Piercing] Barrier'}}
+TUNING_PERK = {'hash': 4248247583, 'displayProperties': {'name': '+5 Grenade / -5 Melee'}}
 # The activity modes whose icons badge each side of perk popularity.
 ICONS = '/common/destiny2_content/icons/'
 RAID = {
@@ -229,7 +243,13 @@ DEFINITIONS = {
     ],
     'DestinyCollectibleDefinition': [],
     'DestinyObjectiveDefinition': [ENEMIES_DEFEATED],
-    'DestinySandboxPerkDefinition': [RADIOLARIA_BREACH, COLLECTIVE_POWER],
+    'DestinySandboxPerkDefinition': [
+        RADIOLARIA_BREACH,
+        COLLECTIVE_POWER,
+        ADAPTIVE_FRAME_PERK,
+        BARRIER,
+        TUNING_PERK,
+    ],
     'DestinyPlugSetDefinition': [COSMETICS],
     'DestinyInventoryItemConstantsDefinition': [],
 }
@@ -319,6 +339,18 @@ def test_a_weapon_keeps_its_sockets_and_a_plug_its_stats_in_its_own_row(db, mani
     assert json_column(db, item, 'socketEntries', 309000506) == []
 
 
+def test_a_plug_keeps_its_perks_and_a_weapon_doesnt(db, manifest_path):
+    # Each perk keeps its perkHash alone; a weapon's own perks aren't read.
+    assert manifest.ingest_manifest(db, manifest_path, VERSION)
+    item = 'DestinyInventoryItemDefinition'
+    assert json_column(db, item, 'perks', 1294026524) == [
+        {'perkHash': 1907936296},
+        {'perkHash': 3469621377},
+    ]
+    assert json_column(db, item, 'perks', 309000506) == [{'perkHash': 4248247583}]
+    assert json_column(db, item, 'perks', 4219826183) == []
+
+
 def test_a_socket_naming_no_plug_set_keeps_its_inline_plugs(db, manifest_path):
     # Mint Retrograde's origin socket lists its options inline, so they are
     # kept; Fatebringer's sockets name plug sets, so their inline lists go.
@@ -346,6 +378,9 @@ def test_the_activity_modes_are_copied_with_their_icons(db, manifest_path):
 
 
 def test_an_armor_set_keeps_its_bonuses_and_their_perks_are_copied(db, manifest_path):
+    # The sandbox perks copied are the set bonuses' and Adaptive Frame's (an
+    # intrinsic, whose perks name the breaker it gives); the tuning mod's
+    # perk, on a plug that isn't an intrinsic, isn't.
     assert manifest.ingest_manifest(db, manifest_path, VERSION)
     assert json_column(db, 'DestinyEquipableItemSetDefinition', 'setPerks', 741162535) == [
         {'requiredSetCount': 2, 'sandboxPerkHash': 17188252},
@@ -354,7 +389,12 @@ def test_an_armor_set_keeps_its_bonuses_and_their_perks_are_copied(db, manifest_
     names = [
         r[0] for r in db.execute('SELECT name FROM DestinySandboxPerkDefinition ORDER BY hash')
     ]
-    assert names == ['Radiolaria Breach', 'Collective Power']
+    assert names == [
+        'Radiolaria Breach',
+        'Collective Power',
+        'Adaptive Frame',
+        '[Shield-Piercing] Barrier',
+    ]
 
 
 def test_a_plug_set_keeps_its_entries_as_listed(db, manifest_path):

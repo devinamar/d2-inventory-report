@@ -376,6 +376,38 @@ def add_weapon_def(
         )
 
 
+# The champion breaker types (DestinyBreakerTypeDefinition): name -> (hash,
+# icon). A weapon's frame names one in a perk of its own, like "[Stagger]
+# Unstoppable" (the text writes Shield Piercing as [Shield-Piercing]).
+BREAKER_TYPES = {
+    'Shield Piercing': (485622768, '/img/shield_piercing.png'),
+    'Disruption': (2611060930, '/img/disruption.png'),
+    'Stagger': (3178805705, '/img/stagger.png'),
+}
+
+
+def add_breaker(conn, plug_hash, breaker_type, champion):
+    # Give a plug (a weapon's frame) the perk naming a champion breaker, like
+    # "[Stagger] Unstoppable", stored with that breaker type's definition.
+    type_hash, icon = BREAKER_TYPES[breaker_type]
+    perk = zlib.crc32(f'{breaker_type} {champion}'.encode())
+    token = breaker_type.replace(' ', '-')
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO DestinyBreakerTypeDefinition VALUES (?, ?, ?)",
+            (type_hash, breaker_type, icon),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO DestinySandboxPerkDefinition (hash, name) VALUES (?, ?)",
+            (perk, f'[{token}] {champion}'),
+        )
+        conn.execute(
+            "UPDATE DestinyInventoryItemDefinition "
+            "SET perks = json_insert(perks, '$[#]', json_object('perkHash', ?)) WHERE hash = ?",
+            (perk, plug_hash),
+        )
+
+
 def add_plug_set(conn, item_hash, socket_idx, set_hash, plugs, key='randomizedPlugSetHash'):
     # A plug set listing plugs ([(plug hash, currentlyCanRoll)]) in that
     # order, named by the definition's socket socket_idx as its key

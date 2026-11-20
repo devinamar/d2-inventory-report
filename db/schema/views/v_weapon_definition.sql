@@ -9,7 +9,9 @@
 -- there, "Random Perks: ...", names no place). ammo is the weapon's ammo type
 -- (primary, special or heavy; '' when unknown) and ammo_icon Bungie's badge
 -- for it. element is the weapon's default damage type and element_icon its
--- icon; archetype is the intrinsic socket 0 starts with; tier is the tierType
+-- icon; archetype is the intrinsic socket 0 starts with, and breaker and
+-- breaker_icon the champion breaker it gives (v_plug_breaker; '' when none);
+-- tier is the tierType
 -- (5 is Legendary, 6 Exotic). wtype_icon is the weapon type's picture: the
 -- icon of the Gunsmith Order named after the type ("Hand Cannons"; "Bows" for
 -- a Combat Bow), '' when no order has the name.
@@ -60,13 +62,16 @@ SELECT d.hash AS item_hash, COALESCE(d.name, '') AS name,
        CASE WHEN COALESCE(dt.icon, '') = '' THEN ''
             ELSE 'https://www.bungie.net' || dt.icon END AS element_icon,
        COALESCE(NULLIF(ip.name, ''), 'Unknown') AS archetype,
-       COALESCE(ip.icon, '') AS archetype_icon
+       COALESCE(ip.icon, '') AS archetype_icon,
+       COALESCE(br.breaker, '') AS breaker,
+       COALESCE(br.breaker_icon, '') AS breaker_icon
 FROM DestinyInventoryItemDefinition d
 LEFT JOIN DestinyInventoryBucketDefinition b ON b.hash = d.bucketTypeHash
 LEFT JOIN DestinyCollectibleDefinition c ON c.hash = d.collectibleHash
 LEFT JOIN by_trait bt ON bt.hash = d.hash AND bt.n = 1
 LEFT JOIN DestinyDamageTypeDefinition dt ON dt.hash = d.defaultDamageTypeHash
 LEFT JOIN v_plug ip ON ip.hash = d.socketEntries ->> '$[0].singleInitialItemHash'
+LEFT JOIN v_plug_breaker br ON br.plug_hash = d.socketEntries ->> '$[0].singleInitialItemHash'
 LEFT JOIN type_icon ti ON ti.name = CASE d.itemTypeDisplayName
     WHEN 'Combat Bow' THEN 'Bows' ELSE d.itemTypeDisplayName || 's' END
 WHERE d.itemType = 3;
