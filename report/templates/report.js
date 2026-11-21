@@ -2,7 +2,8 @@
 // wishlist switches, opening weapon cards, armor sets and Popular's weapons
 // (one by one, or a group at a time by its double chevron), the perk grids
 // they open and the copy a weapon card shows, Popular's filters, tooltips and
-// copying DIM queries and ids.
+// copying DIM queries and ids; and setting the report up again, as the player
+// left it, when a newer one is swapped into the page.
 
 // Tabs: show the page the hash names (#weapons shows #page-weapons), the
 // Summary when it names none. Page ids differ from the hashes so the browser
@@ -25,7 +26,6 @@ function route() {
     window.scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
-route();
 
 // A side's scope: the closest element that names a side (a Popular list, a
 // weapon card), PvE outside one.
@@ -70,7 +70,7 @@ function heat(rel) {
 // above its element when it fits, else below; a trait's sits beside its
 // column (left of Trait 1, right of Trait 2), clear of the pair lines between
 // them.
-const tip = document.getElementById('tip');
+let tip = document.getElementById('tip');
 const SIDE_LABELS = { pve: 'PvE', pvp: 'PvP' };
 
 function gridTip(perk) {
@@ -814,9 +814,6 @@ function filterItems(page) {
     countCards(page);
 }
 
-for (const page of document.querySelectorAll('.page')) {
-    filterItems(page);
-}
 document.addEventListener('input', (e) => {
     if (e.target.matches('.search, .type-select')) {
         filterItems(e.target.closest('.page'));
@@ -1315,3 +1312,206 @@ document.addEventListener('click', (e) => {
         }, () => prompt('Copy this', copier.dataset.q));
     }
 });
+
+// Setting the report up: when it loads, and again when the static site (which
+// builds this report in the browser) swaps a newer one into the page as the
+// player's inventory changes, updating in place as DIM does. reportState
+// notes what the player has set on each page: its pressed switches, the
+// toolbar's search, type, perks and half-typed perk, its folds, the cards,
+// armor sets and Popular weapons open (and which had their grid out), and
+// each weapon card's side and copy shown, by the copy's id, since its place on
+// the card moves as copies come and go; then the field being typed in, and
+// the card at the top of the window. setupReport shows the page the address
+// names and runs the toolbar's filters, and given that state puts it back,
+// the same card where it was in the window.
+
+// A switch button's value: its data-value, or a flip's data-filter or
+// data-sort.
+function buttonKey(b) {
+    return b.dataset.value ?? b.dataset.filter ?? b.dataset.sort;
+}
+
+// The fields a page's state notes.
+const FIELDS = ['.toolbar .search', '.type-select', '.perk-input'];
+
+// The card at the top of the window, just under the header (a weapon card,
+// armor set or Popular weapon): its disclosure's target and how far down the
+// window it starts; and the scroll offset, for when there's none or it's gone.
+function topItem() {
+    const y = document.querySelector('.top').getBoundingClientRect().bottom + 1;
+    const el = document.elementFromPoint(innerWidth / 2, y);
+    const item = el && el.closest('.card');
+    const toggle = item && item.querySelector('.toggle');
+    if (!toggle) {
+        return { y: scrollY };
+    }
+    return { id: toggle.getAttribute('aria-controls'), top: item.getBoundingClientRect().top, y: scrollY };
+}
+
+function reportState() {
+    const pages = {};
+    for (const page of document.querySelectorAll('.page')) {
+        const switches = {};
+        for (const sw of page.querySelectorAll('.switch:not(.mini)')) {
+            switches[sw.getAttribute('aria-label')] = [...sw.querySelectorAll('[aria-pressed="true"]')].map(buttonKey);
+        }
+        const fields = {};
+        for (const selector of FIELDS) {
+            const field = page.querySelector(selector);
+            if (field) {
+                fields[selector] = field.value;
+            }
+        }
+        const open = {};
+        const grids = [];
+        for (const t of page.querySelectorAll('.toggle')) {
+            const id = t.getAttribute('aria-controls');
+            open[id] = t.getAttribute('aria-expanded') === 'true';
+            const host = gridHost(document.getElementById(id));
+            if (host && host.querySelector('.pg')) {
+                grids.push(id);
+            }
+        }
+        const cards = {};
+        for (const card of page.querySelectorAll('.fam')) {
+            const host = card.querySelector('[data-g]');
+            const entry = card.querySelector(`.pr[data-k="${host.dataset.k}"]`);
+            let copy = null;
+            if (entry) {
+                copy = entry.querySelector('.pr-id').textContent;
+            }
+            cards[host.dataset.g] = { side: card.dataset.side, copy };
+        }
+        pages[page.id] = {
+            switches,
+            fields,
+            perks: page._perks || [],
+            folds: [...page.querySelectorAll('details')].map((d) => d.open),
+            rolled: [...page.querySelectorAll('.expand')].map((b) => b.getAttribute('aria-expanded') === 'true'),
+            open,
+            grids,
+            cards,
+        };
+    }
+    let focus = null;
+    const active = document.activeElement;
+    const page = active && active.closest('.page');
+    const selector = page && FIELDS.find((s) => active.matches(s));
+    if (selector) {
+        focus = { page: page.id, selector, start: active.selectionStart, end: active.selectionEnd };
+    }
+    return { pages, focus, top: topItem() };
+}
+
+// Put a page's noted state back on the new report's HTML. A value the new
+// report no longer offers (an element none of the copies comes in any more)
+// leaves its switch on its first button, All, and a card, armor set or fold
+// the old report didn't have keeps the new report's default. A grid that was
+// out is cloned again at once, so the page is as tall as it was; one of a
+// card opened but never brought near the window opens when it comes near.
+function restorePage(page, saved) {
+    for (const sw of page.querySelectorAll('.switch:not(.mini)')) {
+        const pressed = saved.switches[sw.getAttribute('aria-label')];
+        if (!pressed) {
+            continue;
+        }
+        const buttons = [...sw.querySelectorAll('button')];
+        for (const b of buttons) {
+            b.setAttribute('aria-pressed', pressed.includes(buttonKey(b)));
+        }
+        if (!sw.matches('.flip') && !buttons.some((b) => b.getAttribute('aria-pressed') === 'true')) {
+            buttons[0].setAttribute('aria-pressed', 'true');
+        }
+    }
+    for (const [selector, value] of Object.entries(saved.fields)) {
+        const field = page.querySelector(selector);
+        if (field) {
+            field.value = value;
+        }
+    }
+    const folds = page.querySelectorAll('details');
+    if (folds.length === saved.folds.length) {
+        folds.forEach((d, i) => {
+            d.open = saved.folds[i];
+        });
+    }
+    const rolled = page.querySelectorAll('.expand');
+    if (rolled.length === saved.rolled.length) {
+        rolled.forEach((b, i) => setRolled(b, saved.rolled[i]));
+    }
+    for (const card of page.querySelectorAll('.fam')) {
+        const host = card.querySelector('[data-g]');
+        const was = saved.cards[host.dataset.g];
+        if (!was) {
+            continue;
+        }
+        setSide(card, was.side);
+        const entry = [...card.querySelectorAll('.pr')].find((e) => e.querySelector('.pr-id').textContent === was.copy);
+        if (entry) {
+            checkCopy(card, entry.dataset.k);
+        }
+    }
+    if (saved.perks.length) {
+        const { names } = perks();
+        page._perks = saved.perks.filter((key) => names.has(key));
+    }
+    const grids = new Set(saved.grids);
+    for (const t of page.querySelectorAll('.toggle')) {
+        const id = t.getAttribute('aria-controls');
+        if (!(id in saved.open)) {
+            continue;
+        }
+        const open = saved.open[id];
+        t.setAttribute('aria-expanded', open);
+        const target = document.getElementById(id);
+        target.hidden = !open;
+        const host = gridHost(target);
+        if (open && host && grids.has(id)) {
+            openGrid(host);
+        } else if (open && host) {
+            refresh(host);
+        }
+    }
+    if (page._perks) {
+        setPerks(page, page._perks);
+    }
+    applySwitches(page);
+    sortCards(page);
+}
+
+function setupReport(state) {
+    tip = document.getElementById('tip');
+    perkIndex = null;
+    queued.clear();
+    watcher.disconnect();
+    resizer.disconnect();
+    route();
+    for (const page of document.querySelectorAll('.page')) {
+        const saved = state && state.pages[page.id];
+        if (saved) {
+            restorePage(page, saved);
+        } else {
+            filterItems(page);
+        }
+    }
+    if (!state) {
+        return;
+    }
+    const page = state.focus && document.getElementById(state.focus.page);
+    const field = page && page.querySelector(state.focus.selector);
+    if (field) {
+        field.focus({ preventScroll: true });
+        if (field.setSelectionRange && state.focus.start !== null) {
+            field.setSelectionRange(state.focus.start, state.focus.end);
+        }
+    }
+    const target = state.top.id && document.getElementById(state.top.id);
+    const item = target && target.closest('.card');
+    if (item && item.getClientRects().length) {
+        scrollTo(0, item.getBoundingClientRect().top + scrollY - state.top.top);
+    } else {
+        scrollTo(0, state.top.y);
+    }
+}
+
+setupReport();
