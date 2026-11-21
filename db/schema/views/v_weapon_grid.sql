@@ -17,7 +17,9 @@
 -- the column has no scores on the side), heat (rel in tenths, 0 to 10), pos
 -- (the perk's place in its column: by share, then the game's order), and quiet
 -- (a trait below popularity_rule's quiet_rel of its column's top and not in
--- the side's top five pairs).
+-- the side's top five pairs). Each column's col_order and label are window
+-- aggregates in scored, so cell is read once: SQLite inlines a CTE wherever
+-- it is read (see v_weapon_card on its cursor cap).
 -- ponytail: two vote cutoffs for every column, so a real perk under about 1%
 -- of a family's votes can hide too, and a later-block perk under about 5%
 -- (some magazine sets roll theirs); raise them if one goes missing.
@@ -98,18 +100,6 @@ label AS (
     WHERE kind IS NOT NULL AND name != ''
     GROUP BY name, kind
 ),
-col AS (
-    SELECT c.grid_id, c.col,
-           COALESCE(MIN(c.socket_idx),
-                    CASE c.col WHEN 'intrinsic' THEN 0 WHEN 'barrel' THEN 1 WHEN 'magazine' THEN 2
-                               WHEN 'trait1' THEN 3 WHEN 'trait2' THEN 4 ELSE 8 END) AS col_order,
-           CASE WHEN c.col LIKE 'trait%' THEN 'Trait ' || substr(c.col, 6)
-                ELSE COALESCE(MIN(l.label), upper(substr(c.col, 1, 1)) || substr(c.col, 2)) END
-               AS label
-    FROM cell c
-    LEFT JOIN label l ON l.name = c.perk AND l.kind = c.col
-    GROUP BY c.grid_id, c.col
-),
 named AS (
     SELECT grid_id, perk, replace(group_concat(DISTINCT place ORDER BY place), ',', ' ') AS lists
     FROM (
@@ -134,7 +124,13 @@ top_pair AS (
     SELECT side, name, 'trait2', trait2 FROM v_popularity_pair WHERE rank <= 5
 ),
 scored AS (
-    SELECT c.grid_id, c.col, c.perk, s.side, p.share, p.rank,
+    SELECT c.grid_id, c.col, c.perk, c.position, c.own, s.side, p.share, p.rank,
+           COALESCE(MIN(c.socket_idx) OVER col,
+                    CASE c.col WHEN 'intrinsic' THEN 0 WHEN 'barrel' THEN 1 WHEN 'magazine' THEN 2
+                               WHEN 'trait1' THEN 3 WHEN 'trait2' THEN 4 ELSE 8 END) AS col_order,
+           CASE WHEN c.col LIKE 'trait%' THEN 'Trait ' || substr(c.col, 6)
+                ELSE COALESCE(MIN(l.label) OVER col, upper(substr(c.col, 1, 1)) || substr(c.col, 2))
+                END AS label,
            CASE WHEN pc.col IS NULL THEN NULL ELSE COALESCE(p.rel, 0) END AS rel,
            c.col LIKE 'trait%' AND COALESCE(p.rel, 0) < r.quiet_rel AND t.perk IS NULL AS quiet,
            ROW_NUMBER() OVER (
@@ -145,13 +141,15 @@ scored AS (
     JOIN grid g ON g.grid_id = c.grid_id
     CROSS JOIN side s
     CROSS JOIN popularity_rule r
+    LEFT JOIN label l ON l.name = c.perk AND l.kind = c.col
     LEFT JOIN v_popularity_column pc ON pc.side = s.side AND pc.name = g.entry AND pc.col = c.col
     LEFT JOIN voted p
         ON p.side = s.side AND p.name = g.entry AND p.col = c.col AND p.perk = c.perk
     LEFT JOIN top_pair t
         ON t.side = s.side AND t.name = g.entry AND t.col = c.col AND t.perk = c.perk
+    WINDOW col AS (PARTITION BY c.grid_id, c.col)
 )
-SELECT c.grid_id, c.col, k.col_order, k.label, c.perk, c.position, c.own,
+SELECT r.grid_id, r.col, r.col_order, r.label, r.perk, r.position, r.own,
        COALESCE(n.lists, '') AS lists,
        MAX(CASE WHEN r.side = 'pve' THEN r.share END) AS pve_share,
        MAX(CASE WHEN r.side = 'pve' THEN r.rank END) AS pve_rank,
@@ -165,8 +163,6 @@ SELECT c.grid_id, c.col, k.col_order, k.label, c.perk, c.position, c.own,
        MAX(CASE WHEN r.side = 'pvp' THEN CAST(round(10 * r.rel) AS INTEGER) END) AS pvp_heat,
        MAX(CASE WHEN r.side = 'pvp' THEN r.pos END) AS pvp_pos,
        MAX(CASE WHEN r.side = 'pvp' THEN r.quiet END) AS pvp_quiet
-FROM cell c
-JOIN col k ON k.grid_id = c.grid_id AND k.col = c.col
-JOIN scored r ON r.grid_id = c.grid_id AND r.col = c.col AND r.perk = c.perk
-LEFT JOIN named n ON n.grid_id = c.grid_id AND n.perk = c.perk
-GROUP BY c.grid_id, c.col, c.perk;
+FROM scored r
+LEFT JOIN named n ON n.grid_id = r.grid_id AND n.perk = r.perk
+GROUP BY r.grid_id, r.col, r.perk;
